@@ -1,0 +1,12 @@
+__pycache__/
+.env
+.venv/
+*.pyc
+.DS_Store
+.idea/
+.vscode/
+site/
+.cache/
+# 密钥文件
+*.json
+key.json
