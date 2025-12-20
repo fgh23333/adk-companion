@@ -10,3 +10,4 @@ site/
 # 密钥文件
 *.json
 key.json
+.adk/
