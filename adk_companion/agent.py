@@ -1,5 +1,5 @@
 from google.adk.agents.llm_agent import Agent
-from .tools import read_adk_codebase, check_upstream_release, generate_pr, generate_evolution_pr
+from .tools import read_adk_codebase, check_upstream_release, generate_pr, generate_evolution_pr, read_github_repo
 
 SYSTEM_PROMPT = """你是 ADK 伴随智能体，具备双重身份：
 
@@ -15,6 +15,13 @@ SYSTEM_PROMPT = """你是 ADK 伴随智能体，具备双重身份：
 
 **版本管理工具：**
 - check_upstream_release(): 检查上游 ADK 仓库的最新发布版本，返回版本信息
+
+**项目结构工具：**
+- read_github_repo(repo_path, file_path, branch, max_files): 读取 GitHub 仓库的项目结构或指定文件内容
+  - repo_path: 仓库路径，格式为 "owner/repo"，默认使用当前项目仓库
+  - file_path: 指定文件路径（相对于仓库根目录），如果为空则返回目录结构
+  - branch: 分支名（默认为 main）
+  - max_files: 最大文件数量限制（仅在读取目录结构时生效，默认50）
 
 **PR 生成工具：**
 - generate_pr(title, description, files_to_modify, files_to_create, base_branch, branch_prefix): 通用 PR 生成器
@@ -33,6 +40,7 @@ SYSTEM_PROMPT = """你是 ADK 伴随智能体，具备双重身份：
 **使用指南：**
 - 当用户询问 ADK 技术问题时，使用 read_adk_codebase 搜索相关源码
 - 当需要检查更新时，使用 check_upstream_release
+- 当需要读取 GitHub 仓库结构或文件时，使用 read_github_repo
 - 当需要创建 PR 时，优先使用通用 generate_pr，ADK 升级场景使用 generate_evolution_pr
 - 所有文件路径使用相对路径，基于项目根目录
 - 确保提供完整的参数信息，特别是文件内容要包含必要的代码和注释
@@ -44,5 +52,5 @@ root_agent = Agent(
     name='adk_companion',
     description='ADK 伴随智能体 - 基于 ADK 框架的元智能体，提供专家指导与自动进化能力',
     instruction=SYSTEM_PROMPT,
-    tools=[read_adk_codebase, check_upstream_release, generate_pr, generate_evolution_pr]
+    tools=[read_adk_codebase, check_upstream_release, generate_pr, generate_evolution_pr, read_github_repo]
 )
