@@ -64,10 +64,11 @@ def generate_pr(
     files_to_modify: dict = None,
     files_to_create: dict = None,
     base_branch: str = "main",
-    branch_prefix: str = "feature"
+    branch_prefix: str = "feature",
+    target_repo: str = None
 ) -> dict:
     """
-    通用 PR 生成器 - 创建分支、修改/创建文件、提交并创建 PR
+    通用 PR 生成器 - 直接对远程仓库创建 PR
     
     Args:
         title: PR 标题
@@ -76,211 +77,158 @@ def generate_pr(
         files_to_create: 要创建的文件字典 {文件路径: 文件内容}
         base_branch: 目标分支（默认 main）
         branch_prefix: 分支前缀（默认 feature）
+        target_repo: 目标仓库，格式为 "owner/repo"，如果不指定则尝试从环境获取
     
     Returns:
         dict: 包含 PR 信息或错误信息
     """
     try:
-        import git
         from datetime import datetime
         
-        # 获取当前仓库路径 - 使用更可靠的方法
-        current_file = Path(__file__).resolve()
-        repo_path = current_file.parent.parent.parent
+        # 检查 GitHub Token
+        token = os.getenv("GITHUB_TOKEN")
+        if not token:
+            return {"error": "需要设置 GITHUB_TOKEN 环境变量"}
         
-        # 验证仓库路径
-        if not repo_path.exists():
-            return {"error": f"仓库路径不存在: {repo_path}"}
+        # 确定目标仓库
+        if not target_repo:
+            return {"error": "需要指定 target_repo 参数，格式为 'owner/repo'"}
         
-        # 检查是否是 git 仓库
-        if not (repo_path / '.git').exists():
-            return {"error": f"路径不是 Git 仓库: {repo_path}"}
+        # 验证仓库格式
+        if '/' not in target_repo or len(target_repo.split('/')) != 2:
+            return {"error": "target_repo 格式错误，应为 'owner/repo'"}
         
-        # 初始化仓库对象
+        g = Github(token)
+        
+        # 验证仓库存在且可访问
         try:
-            repo = git.Repo(str(repo_path))
+            github_repo = g.get_repo(target_repo)
         except Exception as e:
-            return {"error": f"无法初始化 Git 仓库: {str(e)}"}
+            return {"error": f"无法访问仓库 {target_repo}: {str(e)}"}
         
-        # 检查仓库状态
-        if repo.is_dirty():
-            return {"error": "工作目录有未提交的更改，请先提交或暂存更改"}
-        
-        # 获取当前分支
-        try:
-            current_branch = repo.active_branch.name
-        except Exception as e:
-            return {"error": f"无法获取当前分支: {str(e)}"}
-        
-        # 生成分支名（基于标题，简化处理）
-        safe_title = "".join(c for c in title if c.isalnum() or c in (' ', '-', '_')).rstrip()
-        if not safe_title:
-            safe_title = "update"
-        branch_name = f"{branch_prefix}/{'-'.join(safe_title.lower().split()[:5])}"
-        
-        # 确保在正确的分支上
-        try:
-            # 先获取最新代码
-            origin = repo.remote(name='origin')
-            origin.fetch()
-        except Exception as e:
-            return {"error": f"无法获取远程更新: {str(e)}"}
-        
-        # 切换到新分支
-        try:
-            if branch_name in [ref.name for ref in repo.refs]:
-                # 分支已存在，删除并重新创建
-                repo.delete_head(branch_name, force=True)
-            new_branch = repo.create_head(branch_name)
-            new_branch.checkout()
-        except Exception as e:
-            return {"error": f"无法创建分支 {branch_name}: {str(e)}"}
-        
-        # 修改文件
-        files_added = []
-        if files_to_modify:
-            for file_path, new_content in files_to_modify.items():
-                try:
-                    full_path = repo_path / file_path
-                    # 确保路径是相对路径且在仓库内
-                    if not str(full_path).startswith(str(repo_path)):
-                        return {"error": f"文件路径超出仓库范围: {file_path}"}
-                    
-                    if full_path.exists():
-                        with open(full_path, 'w', encoding='utf-8') as f:
-                            f.write(new_content)
-                        files_added.append(file_path)
-                    else:
-                        return {"error": f"要修改的文件不存在: {file_path}"}
-                except Exception as e:
-                    return {"error": f"修改文件 {file_path} 失败: {str(e)}"}
-        
-        # 创建新文件
-        if files_to_create:
-            for file_path, content in files_to_create.items():
-                try:
-                    full_path = repo_path / file_path
-                    # 确保路径是相对路径且在仓库内
-                    if not str(full_path).startswith(str(repo_path)):
-                        return {"error": f"文件路径超出仓库范围: {file_path}"}
-                    
-                    # 确保目录存在
-                    full_path.parent.mkdir(parents=True, exist_ok=True)
-                    with open(full_path, 'w', encoding='utf-8') as f:
-                        f.write(content)
-                    files_added.append(file_path)
-                except Exception as e:
-                    return {"error": f"创建文件 {file_path} 失败: {str(e)}"}
-        
-        # 提交更改
-        if files_added:
+        # 如果没有文件操作，直接创建一个空的 PR
+        if not files_to_modify and not files_to_create:
             try:
-                repo.index.add(files_added)
-                
-                commit_message = f"""{title}
+                # 创建一个简单的 PR（不涉及文件更改）
+                pr = github_repo.create_pull(
+                    title=title,
+                    body=f"{description}\n\n---\nGenerated by ADK Companion at {datetime.now().isoformat()}",
+                    head=base_branch,  # 使用同一分支作为源和目标
+                    base=base_branch
+                )
+                return {
+                    "status": "success",
+                    "pr_url": pr.html_url,
+                    "pr_number": pr.number,
+                    "message": f"Created PR #{pr.number}: {title}"
+                }
+            except Exception as e:
+                return {"error": f"创建 PR 失败: {str(e)}"}
+        
+        # 有文件操作时，需要通过 GitHub API 直接创建文件
+        try:
+            # 生成分支名
+            safe_title = "".join(c for c in title if c.isalnum() or c in (' ', '-', '_')).rstrip()
+            if not safe_title:
+                safe_title = "update"
+            branch_name = f"{branch_prefix}/{'-'.join(safe_title.lower().split()[:5])}"
+            
+            # 获取基础分支的最新提交
+            base_branch_ref = github_repo.get_branch(base_branch)
+            base_sha = base_branch_ref.commit.sha
+            
+            # 创建新分支
+            try:
+                github_repo.create_git_ref(
+                    ref=f"refs/heads/{branch_name}",
+                    sha=base_sha
+                )
+            except Exception as e:
+                if "already exists" in str(e):
+                    # 分支已存在，删除后重新创建
+                    try:
+                        github_repo.get_git_ref(f"heads/{branch_name}").delete()
+                        github_repo.create_git_ref(
+                            ref=f"refs/heads/{branch_name}",
+                            sha=base_sha
+                        )
+                    except Exception as delete_e:
+                        return {"error": f"无法创建分支 {branch_name}: {str(delete_e)}"}
+                else:
+                    return {"error": f"无法创建分支 {branch_name}: {str(e)}"}
+            
+            # 更新或创建文件
+            all_files_changed = []
+            
+            # 处理要修改的文件
+            if files_to_modify:
+                for file_path, new_content in files_to_modify.items():
+                    try:
+                        # 获取当前文件内容（如果存在）
+                        try:
+                            current_file = github_repo.get_contents(file_path, ref=base_branch)
+                            github_repo.update_file(
+                                path=file_path,
+                                message=f"Update {file_path}",
+                                content=new_content,
+                                sha=current_file.sha,
+                                branch=branch_name
+                            )
+                        except Exception:
+                            # 文件不存在，创建新文件
+                            github_repo.create_file(
+                                path=file_path,
+                                message=f"Create {file_path}",
+                                content=new_content,
+                                branch=branch_name
+                            )
+                        all_files_changed.append(file_path)
+                    except Exception as e:
+                        return {"error": f"处理文件 {file_path} 失败: {str(e)}"}
+            
+            # 处理要创建的文件
+            if files_to_create:
+                for file_path, content in files_to_create.items():
+                    try:
+                        github_repo.create_file(
+                            path=file_path,
+                            message=f"Add {file_path}",
+                            content=content,
+                            branch=branch_name
+                        )
+                        all_files_changed.append(file_path)
+                    except Exception as e:
+                        return {"error": f"创建文件 {file_path} 失败: {str(e)}"}
+            
+            # 创建 PR
+            commit_message = f"""{title}
 
 {description}
 
 ---
 Generated by ADK Companion at {datetime.now().isoformat()}
-"""
-                repo.index.commit(commit_message)
-            except Exception as e:
-                return {"error": f"提交更改失败: {str(e)}"}
-        else:
-            # 没有文件更改，切换回原分支并返回
-            try:
-                repo.branches[current_branch].checkout()
-                return {"error": "没有文件被修改或创建"}
-            except Exception as e:
-                return {"error": f"切换回原分支失败: {str(e)}"}
-        
-        # 推送到远程
-        try:
-            origin = repo.remote(name='origin')
-            origin.push(branch_name)
-        except Exception as e:
-            return {"error": f"推送分支 {branch_name} 到远程失败: {str(e)}"}
-        
-        # 创建 PR（需要 GitHub Token）
-        token = os.getenv("GITHUB_TOKEN")
-        if token:
-            try:
-                g = Github(token)
-                
-                # 获取仓库信息
-                try:
-                    remote_url = repo.remotes.origin.url
-                    if 'github.com' in remote_url:
-                        # 处理 HTTPS 和 SSH 两种格式
-                        if remote_url.startswith('git@'):
-                            # SSH 格式: git@github.com:owner/repo.git
-                            repo_path_part = remote_url.split('github.com:')[1].replace('.git', '')
-                        else:
-                            # HTTPS 格式: https://github.com/owner/repo.git
-                            repo_path_part = remote_url.split('github.com/')[1].replace('.git', '')
-                        
-                        if '/' in repo_path_part:
-                            owner, name = repo_path_part.split('/')
-                        else:
-                            return {"error": f"无法解析仓库名称: {repo_path_part}"}
-                    else:
-                        return {"error": f"不支持的远程 URL 格式: {remote_url}"}
-                except Exception as e:
-                    return {"error": f"获取远程仓库信息失败: {str(e)}"}
-                
-                github_repo = g.get_repo(f"{owner}/{name}")
-                pr = github_repo.create_pull(
-                    title=title,
-                    body=commit_message,
-                    head=branch_name,
-                    base=base_branch
-                )
-                
-                # 切换回原分支
-                try:
-                    repo.branches[current_branch].checkout()
-                except Exception as e:
-                    # 即使切换分支失败，PR 已经创建成功
-                    pass
-                
-                return {
-                    "status": "success",
-                    "pr_url": pr.html_url,
-                    "pr_number": pr.number,
-                    "branch_name": branch_name,
-                    "message": f"Created PR #{pr.number}: {title}"
-                }
-            except Exception as e:
-                # 切换回原分支
-                try:
-                    repo.branches[current_branch].checkout()
-                except:
-                    pass
-                return {"error": f"创建 PR 失败: {str(e)}"}
-        else:
-            # 切换回原分支
-            try:
-                repo.branches[current_branch].checkout()
-            except Exception as e:
-                return {"error": f"切换回原分支失败: {str(e)}"}
+Files changed: {', '.join(all_files_changed)}"""
+            
+            pr = github_repo.create_pull(
+                title=title,
+                body=commit_message,
+                head=branch_name,
+                base=base_branch
+            )
+            
             return {
-                "status": "partial_success",
-                "pr_url": None,
+                "status": "success",
+                "pr_url": pr.html_url,
+                "pr_number": pr.number,
                 "branch_name": branch_name,
-                "message": f"Branch {branch_name} created and pushed, but no GitHub token to create PR"
+                "files_changed": all_files_changed,
+                "message": f"Created PR #{pr.number}: {title}"
             }
             
-    except ImportError as e:
-        return {"error": f"缺少依赖库: {str(e)}. 请安装 GitPython: pip install GitPython"}
+        except Exception as e:
+            return {"error": f"通过 GitHub API 操作失败: {str(e)}"}
     except Exception as e:
-        # 尝试切换回原分支
-        try:
-            if 'repo' in locals():
-                repo.branches[current_branch].checkout()
-        except:
-            pass
-        return {"error": f"创建 PR 失败: {str(e)}"}
+        return {"error": f"生成 PR 时出错: {str(e)}"}
 
 def read_github_repo(
     repo_path: str = None,
@@ -389,9 +337,15 @@ def read_github_repo(
     except Exception as e:
         return {"error": f"GitHub API 调用失败: {str(e)}"}
 
-def generate_evolution_pr(target_version: str, sample_code: str, dependency_changes: str) -> dict:
+def generate_evolution_pr(target_version: str, sample_code: str, dependency_changes: str, target_repo: str = None) -> dict:
     """
     生成 ADK 升级 PR - 使用通用 PR 生成器的特化版本
+    
+    Args:
+        target_version: 目标版本号
+        sample_code: 示例代码内容
+        dependency_changes: 依赖变更说明
+        target_repo: 目标仓库，格式为 "owner/repo"
     """
     from datetime import datetime
     
@@ -441,5 +395,6 @@ if __name__ == "__main__":
         description=description,
         files_to_modify=files_to_modify,
         files_to_create=files_to_create,
-        branch_prefix="chore"
+        branch_prefix="chore",
+        target_repo=target_repo
     )
