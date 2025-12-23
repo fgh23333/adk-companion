@@ -21,7 +21,9 @@ from .gitlab_tools import (
     get_mr_change_files,
     get_file_content,
     post_comment_on_mr,
-    generate_mr,
+    create_branch,
+    create_commit,
+    create_mr,
     approve_mr,
     merge_mr,
     read_gitlab_repo
@@ -125,6 +127,10 @@ SYSTEM_PROMPT = """你是 ADK 伴随智能体，具备双重身份：
   - merge_method: 合并方法，可选 "merge", "squash", "rebase"（默认 "merge"）
 
 **GitLab MR 管理工具：**
+- create_branch(project_id, branch_name, ref): 创建新分支
+- create_commit(project_id, branch_name, commit_message, actions, author_name, author_email): 提交文件
+  - author_name: 提交者姓名 (可选)
+  - author_email: 提交者邮箱 (可选)
 - create_mr(project_id, title, description, source_branch, target_branch): 创建 GitLab MR
 - get_mr_info(project_id, mr_id): 获取GitLab MR信息
 - get_mr_change_files(project_id, mr_id): 获取GitLab MR涉及文件
@@ -188,7 +194,9 @@ root_agent = Agent(
         get_mr_change_files,
         get_file_content,
         post_comment_on_mr,
-        generate_mr,
+        create_branch,
+        create_commit,
+        create_mr,
         approve_mr,
         merge_mr,
         read_gitlab_repo
