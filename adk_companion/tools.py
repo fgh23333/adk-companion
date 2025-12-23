@@ -398,3 +398,1199 @@ if __name__ == "__main__":
         branch_prefix="chore",
         target_repo=target_repo
     )
+
+def review_pr(
+    repo_path: str,
+    pr_number: int,
+    approve: bool = False,
+    review_comment: str = None,
+    token_env: str = "GITHUB_TOKEN"
+) -> dict:
+    """
+    审查 PR 并可选择批准或添加评论
+    
+    Args:
+        repo_path: 仓库路径，格式为 "owner/repo"
+        pr_number: PR 编号
+        approve: 是否批准 PR（默认 False）
+        review_comment: 审查评论（可选）
+        token_env: GitHub Token 环境变量名（默认 "GITHUB_TOKEN"）
+    
+    Returns:
+        dict: 包含审查结果或错误信息
+    """
+    try:
+        token = os.getenv(token_env)
+        if not token:
+            return {"error": f"需要设置 {token_env} 环境变量"}
+        
+        g = Github(token)
+        repo = g.get_repo(repo_path)
+        pr = repo.get_pull(pr_number)
+        
+        # 检查是否是自己的PR
+        current_user = g.get_user()
+        is_own_pr = pr.user.login == current_user.login
+        
+        if is_own_pr and approve:
+            return {
+                "error": "无法批准自己的PR",
+                "pr_author": pr.user.login,
+                "current_user": current_user.login,
+                "token_used": token_env,
+                "suggestion": "您可以：1) 使用 request_pr_review 请求其他用户审查，2) 只添加评论而不批准",
+                "can_comment": True
+            }
+        
+        # 获取 PR 文件变更
+        files_changed = []
+        for file in pr.get_files():
+            files_changed.append({
+                "filename": file.filename,
+                "status": file.status,
+                "additions": file.additions,
+                "deletions": file.deletions,
+                "changes": file.changes,
+                "patch": file.patch[:1000] + "..." if len(file.patch) > 1000 else file.patch
+            })
+        
+        # 获取 PR 详情
+        pr_details = {
+            "number": pr.number,
+            "title": pr.title,
+            "body": pr.body,
+            "state": pr.state,
+            "head_branch": pr.head.ref,
+            "base_branch": pr.base.ref,
+            "author": pr.user.login,
+            "created_at": pr.created_at.isoformat(),
+            "updated_at": pr.updated_at.isoformat(),
+            "mergeable": pr.mergeable,
+            "mergeable_state": pr.mergeable_state,
+            "files_changed": files_changed,
+            "commits": pr.commits,
+            "additions": pr.additions,
+            "deletions": pr.deletions,
+            "changed_files": pr.changed_files
+        }
+        
+        # 如果需要批准或添加评论
+        if approve or review_comment:
+            try:
+                # 创建审查
+                if approve:
+                    pr.create_review(
+                        body=review_comment or "LGTM! Approved by ADK Companion.",
+                        event="APPROVE"
+                    )
+                    pr_details["review_action"] = "approved"
+                elif review_comment:
+                    pr.create_review(
+                        body=review_comment,
+                        event="COMMENT"
+                    )
+                    pr_details["review_action"] = "commented"
+                    
+            except Exception as e:
+                return {"error": f"创建审查失败: {str(e)}"}
+        
+        return {
+            "status": "success",
+            "pr_details": pr_details,
+            "token_used": token_env,
+            "message": f"Successfully reviewed PR #{pr_number}"
+        }
+        
+    except Exception as e:
+        return {"error": f"审查 PR 失败: {str(e)}"}
+
+def merge_pr(
+    repo_path: str,
+    pr_number: int,
+    merge_method: str = "merge",
+    commit_title: str = None,
+    commit_message: str = None,
+    token_env: str = "GITHUB_TOKEN"
+) -> dict:
+    """
+    合并 PR
+    
+    Args:
+        repo_path: 仓库路径，格式为 "owner/repo"
+        pr_number: PR 编号
+        merge_method: 合并方法，可选 "merge", "squash", "rebase"（默认 "merge"）
+        commit_title: 合并提交标题（可选）
+        commit_message: 合并提交消息（可选）
+        token_env: GitHub Token 环境变量名（默认 "GITHUB_TOKEN"）
+    
+    Returns:
+        dict: 包含合并结果或错误信息
+    """
+    try:
+        token = os.getenv(token_env)
+        if not token:
+            return {"error": f"需要设置 {token_env} 环境变量"}
+        
+        g = Github(token)
+        repo = g.get_repo(repo_path)
+        pr = repo.get_pull(pr_number)
+        
+        # 检查 PR 是否可合并
+        if not pr.mergeable:
+            return {
+                "error": "PR 不可合并",
+                "mergeable_state": pr.mergeable_state,
+                "status": pr.raw_data.get('status', 'unknown')
+            }
+        
+        # 检查是否有合并冲突
+        if pr.mergeable_state == "dirty":
+            return {"error": "PR 有合并冲突，无法自动合并"}
+        
+        # 检查是否需要 CI 通过
+        if pr.mergeable_state == "blocked":
+            # 获取状态检查
+            status_checks = []
+            try:
+                for commit in pr.get_commits():
+                    for status in commit.get_status().statuses:
+                        status_checks.append({
+                            "context": status.context,
+                            "state": status.state,
+                            "description": status.description,
+                            "target_url": status.target_url
+                        })
+            except Exception:
+                pass
+            
+            return {
+                "error": "PR 被阻止合并，可能需要 CI 检查通过或审查批准",
+                "status_checks": status_checks
+            }
+        
+        # 执行合并
+        print(f"[DEBUG] 开始执行合并操作...")
+        try:
+            print(f"[DEBUG] 使用合并方法: {merge_method}")
+            print(f"[DEBUG] 提交信息: {commit_message}")
+            if commit_title:
+                print(f"[DEBUG] 提交标题: {commit_title}")
+            
+            merge_result = pr.merge(
+                commit_message=commit_message,
+                commit_title=commit_title,
+                merge_method=merge_method
+            )
+            
+            print(f"[DEBUG] 合并操作成功完成")
+            print(f"[DEBUG] merge_result.merged: {merge_result.merged}")
+            print(f"[DEBUG] merge_result.sha: {merge_result.sha}")
+            print(f"[DEBUG] merge_result.message: {merge_result.message}")
+            
+            return {
+                "status": "success",
+                "merged": merge_result.merged,
+                "sha": merge_result.sha,
+                "message": merge_result.message,
+                "pr_number": pr_number,
+                "merge_method": merge_method,
+                "merged_at": merge_result.merged_at.isoformat() if merge_result.merged_at else None,
+                "token_used": token_env
+            }
+            
+        except Exception as e:
+            print(f"[DEBUG] 合并操作发生异常")
+            print(f"[DEBUG] 异常对象: {e}")
+            print(f"[DEBUG] 异常类型: {type(e).__name__}")
+            print(f"[DEBUG] 异常repr: {repr(e)}")
+            print(f"[DEBUG] 异常args: {getattr(e, 'args', 'No args')}")
+            
+            # 尝试获取更详细的错误信息
+            error_msg = None
+            try:
+                error_msg = str(e)
+                print(f"[DEBUG] str(e) = {error_msg}")
+            except Exception as str_err:
+                print(f"[DEBUG] str(e) 也失败: {str_err}")
+                error_msg = f"异常无法转换为字符串 (类型: {type(e).__name__})"
+            
+            # 检查是否有 PyGithub 特有的属性
+            if hasattr(e, 'data'):
+                print(f"[DEBUG] 异常data: {e.data}")
+            if hasattr(e, 'status'):
+                print(f"[DEBUG] 异常status: {e.status}")
+            if hasattr(e, 'headers'):
+                print(f"[DEBUG] 异常headers: {e.headers}")
+            
+            # 提供更详细的错误信息
+            if error_msg and "Required status check" in error_msg:
+                print(f"[DEBUG] 识别错误: 必需的状态检查未通过")
+                return {"error": "合并失败：必需的状态检查未通过"}
+            elif error_msg and "Review required" in error_msg:
+                print(f"[DEBUG] 识别错误: 需要代码审查")
+                return {"error": "合并失败：需要代码审查"}
+            elif error_msg and "not authorized" in error_msg.lower():
+                print(f"[DEBUG] 识别错误: 没有权限")
+                return {"error": "合并失败：没有权限合并此 PR"}
+            elif error_msg and "merge conflict" in error_msg.lower():
+                print(f"[DEBUG] 识别错误: 合并冲突")
+                return {"error": "合并失败：存在合并冲突"}
+            else:
+                print(f"[DEBUG] 未识别的错误类型，构造详细错误信息")
+                detailed_error = f"合并失败: {error_msg if error_msg else '未知错误'} (类型: {type(e).__name__})"
+                return {"error": detailed_error}
+        
+    except Exception as e:
+        print(f"[DEBUG] 外层异常捕获")
+        print(f"[DEBUG] 外层异常对象: {e}")
+        print(f"[DEBUG] 外层异常类型: {type(e).__name__}")
+        print(f"[DEBUG] 外层异常repr: {repr(e)}")
+        
+        # 尝试安全地获取错误信息
+        error_msg = "未知外层异常"
+        try:
+            error_msg = str(e)
+        except Exception:
+            error_msg = f"外层异常无法转换为字符串 (类型: {type(e).__name__})"
+        
+        return {"error": f"合并 PR 失败: {error_msg}"}
+
+def check_pr_author(repo_path: str, pr_number: int, token_env: str = "GITHUB_TOKEN") -> dict:
+    """
+    检查 PR 的创建者信息
+    
+    Args:
+        repo_path: 仓库路径，格式为 "owner/repo"
+        pr_number: PR 编号
+        token_env: GitHub Token 环境变量名（默认 "GITHUB_TOKEN"）
+    
+    Returns:
+        dict: 包含 PR 作者信息和当前用户信息
+    """
+    try:
+        # 参数验证
+        if not repo_path or not isinstance(repo_path, str):
+            return {"error": "repo_path 必须是有效的字符串，格式为 'owner/repo'"}
+        
+        if not pr_number or not isinstance(pr_number, int):
+            return {"error": "pr_number 必须是有效的整数"}
+        
+        if not token_env or not isinstance(token_env, str):
+            return {"error": "token_env 必须是有效的字符串"}
+        
+        token = os.getenv(token_env)
+        if not token:
+            return {"error": f"需要设置 {token_env} 环境变量"}
+        
+        g = Github(token)
+        repo = g.get_repo(repo_path)
+        pr = repo.get_pull(pr_number)
+        
+        # 获取当前用户信息
+        current_user = g.get_user()
+        
+        # 检查是否是自己的PR
+        is_own_pr = pr.user.login == current_user.login
+        
+        return {
+            "status": "success",
+            "pr_number": pr_number,
+            "pr_author": pr.user.login,
+            "current_user": current_user.login,
+            "is_own_pr": is_own_pr,
+            "pr_title": pr.title,
+            "pr_state": pr.state,
+            "can_approve": not is_own_pr,
+            "token_used": token_env,
+            "message": "这是您自己的PR，无法自己批准" if is_own_pr else "可以批准此PR"
+        }
+        
+    except Exception as e:
+        return {"error": f"检查 PR 作者失败: {str(e)}"}
+
+def request_pr_review(repo_path: str, pr_number: int, reviewers: list = None, team_reviewers: list = None, token_env: str = "GITHUB_TOKEN") -> dict:
+    """
+    请求其他用户审查 PR
+    
+    Args:
+        repo_path: 仓库路径，格式为 "owner/repo"
+        pr_number: PR 编号
+        reviewers: 审查者用户名列表（可选）
+        team_reviewers: 团队审查者列表（可选）
+        token_env: GitHub Token 环境变量名（默认 "GITHUB_TOKEN"）
+    
+    Returns:
+        dict: 包含请求结果或错误信息
+    """
+    try:
+        token = os.getenv(token_env)
+        if not token:
+            return {"error": f"需要设置 {token_env} 环境变量"}
+        
+        g = Github(token)
+        repo = g.get_repo(repo_path)
+        pr = repo.get_pull(pr_number)
+        
+        # 检查是否是自己的PR
+        current_user = g.get_user()
+        is_own_pr = pr.user.login == current_user.login
+        
+        if not is_own_pr:
+            return {"error": "只能请求审查自己的PR"}
+        
+        # 如果没有指定审查者，尝试获取仓库的贡献者
+        if not reviewers and not team_reviewers:
+            try:
+                contributors = [contributor.login for contributor in repo.get_contributors()]
+                # 排除自己
+                contributors = [user for user in contributors if user != current_user.login]
+                if contributors:
+                    reviewers = contributors[:3]  # 最多请求3个审查者
+            except Exception:
+                pass
+        
+        if not reviewers and not team_reviewers:
+            return {"error": "没有可用的审查者，请手动指定 reviewers 或 team_reviewers 参数"}
+        
+        # 创建审查请求
+        try:
+            pr.create_review_request(reviewers=reviewers, team_reviewers=team_reviewers)
+            
+            return {
+                "status": "success",
+                "pr_number": pr_number,
+                "requested_reviewers": reviewers or [],
+                "requested_team_reviewers": team_reviewers or [],
+                "token_used": token_env,
+                "message": f"已请求审查 PR #{pr_number}"
+            }
+            
+        except Exception as e:
+            error_msg = str(e)
+            if "Review cannot be requested" in error_msg:
+                return {"error": "无法请求审查，可能是因为PR作者没有权限或审查者不可用"}
+            else:
+                return {"error": f"请求审查失败: {error_msg}"}
+        
+    except Exception as e:
+        return {"error": f"请求 PR 审查失败: {str(e)}"}
+
+def list_prs(
+    repo_path: str,
+    state: str = "open",
+    sort: str = "created",
+    direction: str = "desc",
+    limit: int = 20,
+    token_env: str = "GITHUB_TOKEN"
+) -> dict:
+    """
+    列出仓库的 PR
+    
+    Args:
+        repo_path: 仓库路径，格式为 "owner/repo"
+        state: PR 状态，可选 "open", "closed", "all"（默认 "open"）
+        sort: 排序方式，可选 "created", "updated", "popularity"（默认 "created"）
+        direction: 排序方向，可选 "asc", "desc"（默认 "desc"）
+        limit: 最大返回数量（默认 20）
+        token_env: GitHub Token 环境变量名（默认 "GITHUB_TOKEN"）
+    
+    Returns:
+        dict: 包含 PR 列表或错误信息
+    """
+    try:
+        token = os.getenv(token_env)
+        g = Github(token) if token else Github()
+        repo = g.get_repo(repo_path)
+        
+        # 获取 PR 列表
+        pulls = repo.get_pulls(state=state, sort=sort, direction=direction)
+        
+        pr_list = []
+        count = 0
+        for pr in pulls:
+            if count >= limit:
+                break
+                
+            pr_info = {
+                "number": pr.number,
+                "title": pr.title,
+                "body": pr.body[:200] + "..." if pr.body and len(pr.body) > 200 else pr.body,
+                "state": pr.state,
+                "head_branch": pr.head.ref,
+                "base_branch": pr.base.ref,
+                "author": pr.user.login,
+                "created_at": pr.created_at.isoformat(),
+                "updated_at": pr.updated_at.isoformat(),
+                "mergeable": pr.mergeable,
+                "mergeable_state": pr.mergeable_state,
+                "commits": pr.commits,
+                "additions": pr.additions,
+                "deletions": pr.deletions,
+                "changed_files": pr.changed_files,
+                "url": pr.html_url
+            }
+            
+            # 获取审查状态
+            try:
+                reviews = pr.get_reviews()
+                approvals = sum(1 for review in reviews if review.state == "APPROVED")
+                changes_requested = sum(1 for review in reviews if review.state == "CHANGES_REQUESTED")
+                
+                pr_info["review_status"] = {
+                    "approvals": approvals,
+                    "changes_requested": changes_requested,
+                    "total_reviews": reviews.totalCount
+                }
+            except Exception:
+                pr_info["review_status"] = {"approvals": 0, "changes_requested": 0, "total_reviews": 0}
+            
+            pr_list.append(pr_info)
+            count += 1
+        
+        return {
+            "status": "success",
+            "repo": repo_path,
+            "state": state,
+            "total_prs": len(pr_list),
+            "prs": pr_list,
+            "token_used": token_env
+        }
+        
+    except Exception as e:
+        return {"error": f"获取 PR 列表失败: {str(e)}"}
+
+def smart_review_pr(
+    repo_path: str,
+    pr_number: int,
+    auto_merge: bool = True,
+    merge_method: str = "merge",
+    token_env: str = "GITHUB_TOKEN"
+) -> dict:
+    """
+    智能 PR 审查工具 - 自动审查 PR 并决定是否合并或提出修改建议
+    
+    Args:
+        repo_path: 仓库路径，格式为 "owner/repo"
+        pr_number: PR 编号
+        auto_merge: 是否在审查通过后自动合并（默认 True）
+        merge_method: 合并方法，可选 "merge", "squash", "rebase"（默认 "merge"）
+        token_env: GitHub Token 环境变量名（默认 "GITHUB_TOKEN"）
+    
+    Returns:
+        dict: 包含审查结果和执行操作的详细信息
+    """
+    try:
+        # 参数验证
+        if not repo_path or not isinstance(repo_path, str):
+            return {"error": "repo_path 必须是有效的字符串，格式为 'owner/repo'"}
+        
+        if not pr_number or not isinstance(pr_number, int):
+            return {"error": "pr_number 必须是有效的整数"}
+        
+        if not token_env or not isinstance(token_env, str):
+            return {"error": "token_env 必须是有效的字符串"}
+        
+        if merge_method not in ["merge", "squash", "rebase"]:
+            return {"error": "merge_method 必须是 'merge', 'squash', 或 'rebase'"}
+        
+        # 首先检查 PR 作者信息
+        author_check = check_pr_author(repo_path, pr_number, token_env)
+        if "error" in author_check:
+            return author_check
+        
+        # 获取 PR 详细信息进行审查
+        token = os.getenv(token_env)
+        if not token:
+            return {"error": f"需要设置 {token_env} 环境变量"}
+        
+        g = Github(token)
+        repo = g.get_repo(repo_path)
+        pr = repo.get_pull(pr_number)
+        
+        # 收集 PR 信息用于审查
+        files_info = []
+        total_additions = 0
+        total_deletions = 0
+        
+        for file in pr.get_files():
+            file_info = {
+                "filename": file.filename,
+                "status": file.status,
+                "additions": file.additions,
+                "deletions": file.deletions,
+                "changes": file.changes,
+                "patch": file.patch[:2000] + "..." if len(file.patch) > 2000 else file.patch
+            }
+            files_info.append(file_info)
+            total_additions += file.additions
+            total_deletions += file.deletions
+        
+        # 构建 PR 摘要
+        pr_summary = {
+            "number": pr.number,
+            "title": pr.title,
+            "body": pr.body,
+            "author": pr.user.login,
+            "state": pr.state,
+            "head_branch": pr.head.ref,
+            "base_branch": pr.base.ref,
+            "mergeable": pr.mergeable,
+            "mergeable_state": pr.mergeable_state,
+            "commits": pr.commits,
+            "additions": total_additions,
+            "deletions": total_deletions,
+            "changed_files": pr.changed_files,
+            "files": files_info,
+            "is_own_pr": author_check["is_own_pr"]
+        }
+        
+        # 执行智能审查逻辑
+        review_result = _perform_intelligent_review(pr_summary, repo)
+        
+        # 根据审查结果执行相应操作
+        if review_result["decision"] == "approve_and_merge" and auto_merge:
+            # 尝试合并 PR
+            merge_result = merge_pr(
+                repo_path=repo_path,
+                pr_number=pr_number,
+                merge_method=merge_method,
+                commit_title=f"Merge PR #{pr_number}: {pr.title}",
+                commit_message=f"Auto-merged after review: {review_result['summary']}",
+                token_env=token_env
+            )
+            
+            if merge_result.get("status") == "success":
+                return {
+                    "status": "success",
+                    "action": "approved_and_merged",
+                    "pr_number": pr_number,
+                    "review_summary": review_result,
+                    "merge_result": merge_result,
+                    "token_used": token_env,
+                    "message": f"PR #{pr_number} 已通过审查并自动合并"
+                }
+            else:
+                # 合并失败，添加审查评论但不合并
+                comment = f"✅ 审查通过，但自动合并失败：{merge_result.get('error', '未知错误')}\n\n{review_result['summary']}"
+                review_result = review_pr(repo_path, pr_number, approve=False, review_comment=comment, token_env=token_env)
+                return {
+                    "status": "partial_success",
+                    "action": "approved_but_merge_failed",
+                    "pr_number": pr_number,
+                    "review_summary": review_result,
+                    "merge_error": merge_result.get("error"),
+                    "message": f"PR #{pr_number} 审查通过但合并失败，已添加评论"
+                }
+        
+        elif review_result["decision"] == "request_changes":
+            # 要求修改，添加详细评论
+            comment = f"❌ 需要修改\n\n{review_result['summary']}\n\n**修改建议：**\n{review_result['suggestions']}"
+            review_result = review_pr(repo_path, pr_number, approve=False, review_comment=comment, token_env=token_env)
+            return {
+                "status": "changes_requested",
+                "action": "requested_changes",
+                "pr_number": pr_number,
+                "review_summary": review_result,
+                "review_result": review_result,
+                "message": f"PR #{pr_number} 需要修改，已添加详细评论"
+            }
+        
+        elif review_result["decision"] == "request_human_review":
+            # 请求人工审查
+            if pr_summary["is_own_pr"]:
+                # 如果是自己的PR，请求其他用户审查
+                request_result = request_pr_review(repo_path, pr_number, token_env=token_env)
+                comment = f"🤔 需要人工审查\n\n{review_result['summary']}\n\n已请求其他用户协助审查。"
+            else:
+                # 如果不是自己的PR，添加评论请求更多审查
+                comment = f"🤔 需要进一步审查\n\n{review_result['summary']}\n\n建议请求其他维护者参与审查。"
+                request_result = {"status": "commented"}
+            
+            review_result = review_pr(repo_path, pr_number, approve=False, review_comment=comment, token_env=token_env)
+            return {
+                "status": "human_review_requested",
+                "action": "requested_human_review",
+                "pr_number": pr_number,
+                "review_summary": review_result,
+                "request_result": request_result,
+                "review_result": review_result,
+                "message": f"PR #{pr_number} 需要人工审查，已处理"
+            }
+        
+        else:
+            return {
+                "status": "review_completed",
+                "action": "review_only",
+                "pr_number": pr_number,
+                "review_summary": review_result,
+                "message": f"PR #{pr_number} 审查完成"
+            }
+            
+    except Exception as e:
+        return {"error": f"智能审查失败: {str(e)}"}
+
+def review_pr_with_review_token(
+    repo_path: str,
+    pr_number: int,
+    approve: bool = False,
+    review_comment: str = None
+) -> dict:
+    """
+    使用审查专用Token的 PR 审查工具
+    
+    Args:
+        repo_path: 仓库路径，格式为 "owner/repo"
+        pr_number: PR 编号
+        approve: 是否批准 PR（默认 False）
+        review_comment: 审查评论（可选）
+    
+    Returns:
+        dict: 包含审查结果或错误信息
+    """
+    try:
+        # 参数验证
+        if not repo_path or not isinstance(repo_path, str):
+            return {"error": "repo_path 必须是有效的字符串，格式为 'owner/repo'"}
+        
+        if not pr_number or not isinstance(pr_number, int):
+            return {"error": "pr_number 必须是有效的整数"}
+        
+        # 使用审查专用Token
+        token_env = "REVIEW_GITHUB_TOKEN"
+        token = os.getenv(token_env)
+        if not token:
+            return {"error": f"需要设置 {token_env} 环境变量"}
+        
+        g = Github(token)
+        repo = g.get_repo(repo_path)
+        pr = repo.get_pull(pr_number)
+        
+        # 检查是否是自己的PR
+        current_user = g.get_user()
+        is_own_pr = pr.user.login == current_user.login
+        
+        if is_own_pr and approve:
+            return {
+                "error": "无法批准自己的PR",
+                "pr_author": pr.user.login,
+                "current_user": current_user.login,
+                "token_used": token_env,
+                "suggestion": "您可以：1) 使用 request_pr_review 请求其他用户审查，2) 只添加评论而不批准",
+                "can_comment": True
+            }
+        
+        # 获取 PR 文件变更
+        files_changed = []
+        for file in pr.get_files():
+            files_changed.append({
+                "filename": file.filename,
+                "status": file.status,
+                "additions": file.additions,
+                "deletions": file.deletions,
+                "changes": file.changes,
+                "patch": file.patch[:1000] + "..." if len(file.patch) > 1000 else file.patch
+            })
+        
+        # 获取 PR 详情
+        pr_details = {
+            "number": pr.number,
+            "title": pr.title,
+            "body": pr.body,
+            "state": pr.state,
+            "head_branch": pr.head.ref,
+            "base_branch": pr.base.ref,
+            "author": pr.user.login,
+            "created_at": pr.created_at.isoformat(),
+            "updated_at": pr.updated_at.isoformat(),
+            "mergeable": pr.mergeable,
+            "mergeable_state": pr.mergeable_state,
+            "files_changed": files_changed,
+            "commits": pr.commits,
+            "additions": pr.additions,
+            "deletions": pr.deletions,
+            "changed_files": pr.changed_files
+        }
+        
+        # 如果需要批准或添加评论
+        if approve or review_comment:
+            try:
+                # 创建审查
+                if approve:
+                    pr.create_review(
+                        body=review_comment or "LGTM! Approved by ADK Companion.",
+                        event="APPROVE"
+                    )
+                    pr_details["review_action"] = "approved"
+                elif review_comment:
+                    pr.create_review(
+                        body=review_comment,
+                        event="COMMENT"
+                    )
+                    pr_details["review_action"] = "commented"
+                    
+            except Exception as e:
+                return {"error": f"创建审查失败: {str(e)}"}
+        
+        return {
+            "status": "success",
+            "pr_details": pr_details,
+            "token_used": token_env,
+            "message": f"Successfully reviewed PR #{pr_number}"
+        }
+        
+    except Exception as e:
+        return {"error": f"审查 PR 失败: {str(e)}"}
+
+def merge_pr_with_review_token(
+    repo_path: str,
+    pr_number: int,
+    merge_method: str = "merge",
+    commit_title: str = None,
+    commit_message: str = None
+) -> dict:
+    """
+    使用审查专用Token的 PR 合并工具
+    
+    Args:
+        repo_path: 仓库路径，格式为 "owner/repo"
+        pr_number: PR 编号
+        merge_method: 合并方法，可选 "merge", "squash", "rebase"（默认 "merge"）
+        commit_title: 合并提交标题（可选）
+        commit_message: 合并提交消息（可选）
+    
+    Returns:
+        dict: 包含合并结果或错误信息
+    """
+    # 添加调试信息
+    print(f"[DEBUG] merge_pr_with_review_token called with: repo_path={repo_path}, pr_number={pr_number}, merge_method={merge_method}")
+    try:
+        # 参数验证
+        if not repo_path or not isinstance(repo_path, str):
+            return {"error": "repo_path 必须是有效的字符串，格式为 'owner/repo'"}
+        
+        if not pr_number or not isinstance(pr_number, int):
+            return {"error": "pr_number 必须是有效的整数"}
+        
+        if merge_method not in ["merge", "squash", "rebase"]:
+            return {"error": "merge_method 必须是 'merge', 'squash', 或 'rebase'"}
+        
+        # 使用审查专用Token
+        token_env = "REVIEW_GITHUB_TOKEN"
+        token = os.getenv(token_env)
+        if not token:
+            return {"error": f"需要设置 {token_env} 环境变量"}
+        
+        g = Github(token)
+        repo = g.get_repo(repo_path)
+        pr = repo.get_pull(pr_number)
+        print(f"[DEBUG] PR获取成功: title={pr.title}, state={pr.state}, mergeable={pr.mergeable}, mergeable_state={pr.mergeable_state}")
+        
+        # 检查 PR 是否可合并
+        if not pr.mergeable:
+            print(f"[DEBUG] PR不可合并，返回错误")
+            return {
+                "error": "PR 不可合并",
+                "mergeable_state": pr.mergeable_state,
+                "status": pr.raw_data.get('status', 'unknown')
+            }
+        
+        # 检查是否有合并冲突
+        if pr.mergeable_state == "dirty":
+            print(f"[DEBUG] PR有合并冲突")
+            return {"error": "PR 有合并冲突，无法自动合并"}
+        
+        # 检查是否需要 CI 通过
+        if pr.mergeable_state == "blocked":
+            print(f"[DEBUG] PR被阻止合并")
+            # 获取状态检查
+            status_checks = []
+            try:
+                for commit in pr.get_commits():
+                    for status in commit.get_status().statuses:
+                        status_checks.append({
+                            "context": status.context,
+                            "state": status.state,
+                            "description": status.description,
+                            "target_url": status.target_url
+                        })
+            except Exception:
+                pass
+            
+            return {
+                "error": "PR 被阻止合并，可能需要 CI 检查通过或审查批准",
+                "status_checks": status_checks
+            }
+        
+        # 执行合并前最后检查
+        print(f"[DEBUG] 开始执行合并操作...")
+        print(f"[DEBUG] 最终PR状态检查:")
+        print(f"  - PR状态: {pr.state}")
+        print(f"  - 可合并: {pr.mergeable}")
+        print(f"  - 合并状态: {pr.mergeable_state}")
+        print(f"  - 合并方法: {merge_method}")
+        print(f"  - 提交标题: {commit_title}")
+        print(f"  - 提交信息: {commit_message}")
+        
+        # 刷新PR状态以确保最新信息
+        try:
+            pr.update()
+            print(f"[DEBUG] PR状态已刷新")
+            print(f"  - 刷新后可合并: {pr.mergeable}")
+            print(f"  - 刷新后合并状态: {pr.mergeable_state}")
+        except Exception as update_err:
+            print(f"[DEBUG] 刷新PR状态失败: {update_err}")
+        
+        try:
+            # 确保参数格式正确
+            if not commit_message:
+                commit_message = f"Merge PR #{pr_number}"
+                print(f"[DEBUG] 使用默认提交信息: {commit_message}")
+            
+            if not commit_title:
+                commit_title = f"Merge pull request #{pr_number} from {pr.head.ref}"
+                print(f"[DEBUG] 使用默认提交标题: {commit_title}")
+            
+            print(f"[DEBUG] 调用 pr.merge()...")
+            merge_result = pr.merge(
+                commit_message=commit_message,
+                commit_title=commit_title,
+                merge_method=merge_method
+            )
+            print(f"[DEBUG] 合并操作成功完成")
+            print(f"[DEBUG] merge_result对象: {merge_result}")
+            print(f"[DEBUG] merge_result类型: {type(merge_result)}")
+            
+            # 安全地获取合并结果属性
+            try:
+                merged = getattr(merge_result, 'merged', None)
+                sha = getattr(merge_result, 'sha', None)
+                message = getattr(merge_result, 'message', None)
+                merged_at = getattr(merge_result, 'merged_at', None)
+                
+                print(f"[DEBUG] merge_result.merged: {merged}")
+                print(f"[DEBUG] merge_result.sha: {sha}")
+                print(f"[DEBUG] merge_result.message: {message}")
+                print(f"[DEBUG] merge_result.merged_at: {merged_at}")
+                
+                # 检查关键字段是否为None
+                if merged is None:
+                    print(f"[DEBUG] 警告: merge_result.merged 为 None")
+                if message is None:
+                    print(f"[DEBUG] 警告: merge_result.message 为 None")
+                
+                return {
+                    "status": "success",
+                    "merged": merged,
+                    "sha": sha,
+                    "message": message if message else "合并成功但无消息",
+                    "pr_number": pr_number,
+                    "merge_method": merge_method,
+                    "merged_at": merged_at.isoformat() if merged_at else None,
+                    "token_used": token_env
+                }
+            except Exception as result_err:
+                print(f"[DEBUG] 处理合并结果时发生异常: {result_err}")
+                return {
+                    "status": "partial_success",
+                    "error": f"合并成功但处理结果时出错: {str(result_err)}",
+                    "pr_number": pr_number,
+                    "merge_method": merge_method,
+                    "token_used": token_env
+                }
+            
+        except Exception as e:
+            print(f"[DEBUG] 合并操作发生异常: {e}")
+            print(f"[DEBUG] 异常类型: {type(e).__name__}")
+            
+            # 安全地获取错误信息
+            error_msg = "未知合并错误"
+            try:
+                error_msg = str(e) if e else "异常对象为None"
+                if not error_msg or error_msg == "None" or error_msg.strip() == "":
+                    error_msg = f"合并失败但无法获取错误信息 (异常类型: {type(e).__name__})"
+            except Exception as str_err:
+                error_msg = f"无法转换异常为字符串 (异常类型: {type(e).__name__}, 转换错误: {str_err})"
+            
+            print(f"[DEBUG] 处理后的错误信息: {error_msg}")
+            
+            # 提供更详细的错误信息
+            if "Required status check" in error_msg:
+                print(f"[DEBUG] 识别错误: 必需的状态检查未通过")
+                return {"error": "合并失败：必需的状态检查未通过"}
+            elif "Review required" in error_msg:
+                print(f"[DEBUG] 识别错误: 需要代码审查")
+                return {"error": "合并失败：需要代码审查"}
+            elif "not authorized" in error_msg.lower():
+                print(f"[DEBUG] 识别错误: 没有权限")
+                return {"error": "合并失败：没有权限合并此 PR"}
+            elif "merge conflict" in error_msg.lower():
+                print(f"[DEBUG] 识别错误: 合并冲突")
+                return {"error": "合并失败：存在合并冲突"}
+            elif "Base branch was modified" in error_msg:
+                print(f"[DEBUG] 识别错误: 基础分支被修改")
+                return {"error": "合并失败：基础分支已被修改，请更新PR"}
+            elif "Pull Request is not mergeable" in error_msg:
+                print(f"[DEBUG] 识别错误: PR不可合并")
+                return {"error": "合并失败：PR不可合并"}
+            else:
+                print(f"[DEBUG] 未识别的错误类型，使用处理后的错误信息")
+                return {"error": f"合并失败: {error_msg}"}
+        
+    except Exception as e:
+        # 外层异常处理
+        error_msg = str(e) if e else "未知错误"
+        if not error_msg or error_msg == "None":
+            error_msg = "合并PR操作失败，可能是参数错误或网络问题"
+        return {"error": f"合并 PR 失败: {error_msg}"}
+
+def check_pr_author_with_review_token(
+    repo_path: str,
+    pr_number: int
+) -> dict:
+    """
+    使用审查专用Token检查 PR 作者信息
+    
+    Args:
+        repo_path: 仓库路径，格式为 "owner/repo"
+        pr_number: PR 编号
+    
+    Returns:
+        dict: 包含 PR 作者信息和当前用户信息
+    """
+    try:
+        # 参数验证
+        if not repo_path or not isinstance(repo_path, str):
+            return {"error": "repo_path 必须是有效的字符串，格式为 'owner/repo'"}
+        
+        if not pr_number or not isinstance(pr_number, int):
+            return {"error": "pr_number 必须是有效的整数"}
+        
+        # 使用审查专用Token
+        token_env = "REVIEW_GITHUB_TOKEN"
+        token = os.getenv(token_env)
+        if not token:
+            return {"error": f"需要设置 {token_env} 环境变量"}
+        
+        g = Github(token)
+        repo = g.get_repo(repo_path)
+        pr = repo.get_pull(pr_number)
+        
+        # 获取当前用户信息
+        current_user = g.get_user()
+        
+        # 检查是否是自己的PR
+        is_own_pr = pr.user.login == current_user.login
+        
+        return {
+            "status": "success",
+            "pr_number": pr_number,
+            "pr_author": pr.user.login,
+            "current_user": current_user.login,
+            "is_own_pr": is_own_pr,
+            "pr_title": pr.title,
+            "pr_state": pr.state,
+            "can_approve": not is_own_pr,
+            "token_used": token_env,
+            "message": "这是您自己的PR，无法自己批准" if is_own_pr else "可以批准此PR"
+        }
+        
+    except Exception as e:
+        return {"error": f"检查 PR 作者失败: {str(e)}"}
+
+def request_pr_review_with_review_token(
+    repo_path: str,
+    pr_number: int,
+    reviewers: list = None,
+    team_reviewers: list = None
+) -> dict:
+    """
+    使用审查专用Token请求其他用户审查 PR
+    
+    Args:
+        repo_path: 仓库路径，格式为 "owner/repo"
+        pr_number: PR 编号
+        reviewers: 审查者用户名列表（可选）
+        team_reviewers: 团队审查者列表（可选）
+    
+    Returns:
+        dict: 包含请求结果或错误信息
+    """
+    return request_pr_review(
+        repo_path=repo_path,
+        pr_number=pr_number,
+        reviewers=reviewers,
+        team_reviewers=team_reviewers,
+        token_env="REVIEW_GITHUB_TOKEN"
+    )
+
+def list_prs_with_review_token(
+    repo_path: str,
+    state: str = "open",
+    sort: str = "created",
+    direction: str = "desc",
+    limit: int = 20
+) -> dict:
+    """
+    使用审查专用Token列出仓库的 PR
+    
+    Args:
+        repo_path: 仓库路径，格式为 "owner/repo"
+        state: PR 状态，可选 "open", "closed", "all"（默认 "open"）
+        sort: 排序方式，可选 "created", "updated", "popularity"（默认 "created"）
+        direction: 排序方向，可选 "asc", "desc"（默认 "desc"）
+        limit: 最大返回数量（默认 20）
+    
+    Returns:
+        dict: 包含 PR 列表或错误信息
+    """
+    return list_prs(
+        repo_path=repo_path,
+        state=state,
+        sort=sort,
+        direction=direction,
+        limit=limit,
+        token_env="REVIEW_GITHUB_TOKEN"
+    )
+
+def _perform_intelligent_review(pr_summary: dict, repo) -> dict:
+    """
+    执行智能审查逻辑
+    
+    Args:
+        pr_summary: PR 摘要信息
+        repo: GitHub 仓库对象
+    
+    Returns:
+        dict: 审查结果
+    """
+    issues = []
+    suggestions = []
+    score = 100  # 满分100，扣分制
+    
+    # 1. 检查基本 PR 信息
+    if not pr_summary["title"] or len(pr_summary["title"]) < 10:
+        issues.append("PR 标题过于简单，建议提供更详细的描述")
+        score -= 10
+    
+    if not pr_summary["body"] or len(pr_summary["body"]) < 50:
+        issues.append("PR 描述过于简单，建议详细说明变更内容和原因")
+        score -= 10
+    
+    # 2. 检查文件变更
+    if pr_summary["changed_files"] == 0:
+        issues.append("PR 没有文件变更")
+        score -= 20
+    elif pr_summary["changed_files"] > 50:
+        issues.append("PR 变更文件过多，建议拆分为多个小的 PR")
+        score -= 15
+    
+    # 3. 检查代码变更量
+    if pr_summary["additions"] + pr_summary["deletions"] > 2000:
+        issues.append("代码变更量较大，建议仔细审查")
+        score -= 10
+    
+    # 4. 检查文件类型和内容
+    has_tests = False
+    has_docs = False
+    has_code = False
+    
+    for file_info in pr_summary["files"]:
+        filename = file_info["filename"].lower()
+        
+        # 检查测试文件
+        if "test" in filename or filename.endswith("_test.py") or filename.endswith("test.js"):
+            has_tests = True
+        
+        # 检查文档文件
+        if filename.endswith((".md", ".rst", ".txt")) or "doc" in filename:
+            has_docs = True
+        
+        # 检查代码文件
+        if filename.endswith((".py", ".js", ".ts", ".java", ".cpp", ".c", ".go", ".rs")):
+            has_code = True
+            
+            # 简单的代码质量检查
+            patch = file_info["patch"]
+            if "TODO" in patch or "FIXME" in patch:
+                issues.append(f"文件 {file_info['filename']} 包含未完成的 TODO/FIXME")
+                score -= 5
+            
+            if "print(" in patch and "test" not in filename:
+                issues.append(f"文件 {file_info['filename']} 可能包含调试代码")
+                score -= 3
+    
+    # 5. 检查测试覆盖
+    if has_code and not has_tests:
+        issues.append("代码变更缺少测试用例")
+        score -= 15
+        suggestions.append("添加相应的单元测试或集成测试")
+    
+    # 6. 检查文档更新
+    if pr_summary["additions"] > 100 and not has_docs:
+        issues.append("较大的变更缺少文档更新")
+        score -= 10
+        suggestions.append("更新相关文档说明变更内容")
+    
+    # 7. 检查合并状态
+    if not pr_summary["mergeable"]:
+        issues.append("PR 存在合并冲突或无法自动合并")
+        score -= 20
+    
+    if pr_summary["mergeable_state"] == "dirty":
+        issues.append("PR 有合并冲突")
+        score -= 25
+    elif pr_summary["mergeable_state"] == "blocked":
+        issues.append("PR 被阻止合并（可能需要 CI 检查或审查）")
+        score -= 15
+    
+    # 8. 检查是否为自己的 PR
+    if pr_summary["is_own_pr"]:
+        issues.append("这是您自己的 PR，需要其他用户审查才能合并")
+        score -= 5  # 不扣太多分，因为这是正常情况
+    
+    # 生成审查总结
+    summary_parts = []
+    if score >= 80:
+        summary_parts.append("✅ 代码质量良好")
+    elif score >= 60:
+        summary_parts.append("⚠️ 代码质量一般，有改进空间")
+    else:
+        summary_parts.append("❌ 代码质量需要改进")
+    
+    summary_parts.append(f"📊 审查评分: {score}/100")
+    summary_parts.append(f"📁 变更文件: {pr_summary['changed_files']} 个")
+    summary_parts.append(f"📝 代码行数: +{pr_summary['additions']} -{pr_summary['deletions']}")
+    
+    summary = "\n".join(summary_parts)
+    
+    # 生成修改建议
+    if not suggestions and issues:
+        suggestions = ["请根据上述问题进行相应修改"]
+    
+    # 做出决策
+    if score >= 80 and not pr_summary["is_own_pr"] and pr_summary["mergeable"]:
+        decision = "approve_and_merge"
+    elif score >= 60:
+        if pr_summary["is_own_pr"] or pr_summary["commits"] > 10 or pr_summary["changed_files"] > 20:
+            decision = "request_human_review"
+        else:
+            decision = "approve_and_merge"
+    elif score >= 40:
+        decision = "request_human_review"
+    else:
+        decision = "request_changes"
+    
+    return {
+        "decision": decision,
+        "score": score,
+        "summary": summary,
+        "issues": issues,
+        "suggestions": suggestions,
+        "details": {
+            "has_tests": has_tests,
+            "has_docs": has_docs,
+            "has_code": has_code,
+            "mergeable": pr_summary["mergeable"],
+            "mergeable_state": pr_summary["mergeable_state"]
+        }
+    }

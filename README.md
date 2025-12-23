@@ -54,7 +54,7 @@ ADK 伴随智能体 - 基于 Google ADK 框架的元智能体，提供专家指�
 
 4. **配置环境变量**
    ```bash
-   cp .env.template .env
+   cp .env.example .env
    # 编辑 .env 文件，填入你的配置
    ```
 
@@ -75,12 +75,22 @@ GOOGLE_GENAI_USE_VERTEXAI=1
 GOOGLE_CLOUD_PROJECT=your-gcp-project-id
 GOOGLE_CLOUD_LOCATION=us-central1
 
-# GitHub API Token
-GITHUB_TOKEN=ghp_xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx
+# GitHub Tokens
+GITHUB_TOKEN=ghp_your_main_token_here              # 主智能体使用
+REVIEW_GITHUB_TOKEN=ghp_your_review_token_here     # PR审查智能体专用
 
 # 可选配置
 UPSTREAM_REPO=google/adk-python
 ```
+
+#### Token 配置说明
+
+- **GITHUB_TOKEN**: 主智能体用于创建PR、读取仓库等常规操作
+- **REVIEW_GITHUB_TOKEN**: PR审查智能体专用，用于审查、合并PR等操作
+
+> 💡 **推荐**: 使用不同GitHub账户的Token，确保审查的独立性和客观性
+
+详细配置说明请参考 [TOKEN_CONFIG.md](TOKEN_CONFIG.md)
 
 ### 获取配置值
 
@@ -111,15 +121,24 @@ UPSTREAM_REPO=google/adk-python
 
 ```
 adk-companion/
-├── adk-companion/          # ADK 应用目录
-│   ├── agent.py           # 主智能体定义
-│   ├── tools.py           # 工具函数
-│   └── .env              # 环境变量配置
-├── samples/               # 示例代码
-├── .github/workflows/     # CI/CD 配置
-├── requirements.txt       # Python 依赖
-├── .env.template         # 环境变量模板
-└── README.md            # 项目文档
+├── adk_companion/         # 核心模块
+│   ├── agent.py          # 主智能体定义（包含子智能体）
+│   ├── review_agent.py   # PR审查子智能体
+│   ├── tools.py          # 工具函数（支持多Token）
+│   └── __init__.py       # 模块导出
+├── config.py             # 配置管理模块
+├── check_config.py       # 配置验证脚本
+├── subagent_demo.py      # 子智能体协作演示
+├── review_demo.py        # 审查功能演示
+├── ollama_demo.py        # 主智能体演示
+├── samples/              # 示例代码
+├── .github/workflows/    # CI/CD 配置
+├── requirements.txt      # Python 依赖
+├── .env                 # 环境变量配置（不提交）
+├── .env.example         # 环境变量示例
+├── .env.example         # 简化配置示例
+├── TOKEN_CONFIG.md      # Token配置详细说明
+└── README.md           # 项目文档
 ```
 
 ## 开发指南
@@ -140,11 +159,38 @@ adk web
 adk run
 ```
 
+### 配置验证
+
+```bash
+# 验证配置是否正确
+python config.py --validate
+
+# 测试子智能体集成
+python test_subagent.py
+
+# 查看配置状态
+python config.py
+```
+
+### 演示脚本
+
+```bash
+# 测试主智能体
+python ollama_demo.py
+
+# 测试PR审查功能
+python review_demo.py
+
+# 测试子智能体协作
+python subagent_demo.py
+```
+
 ### 添加新工具
 
 1. 在 `tools.py` 中定义新函数
 2. 在 `agent.py` 中注册工具
 3. 更新文档和测试
+4. 如果需要支持多Token，添加 `token_env` 参数
 
 ### 部署到生产环境
 
@@ -187,11 +233,70 @@ gcloud run deploy adk-companion --image gcr.io/your-project/adk-companion
 
 本项目采用 Apache 2.0 许可证 - 查看 [LICENSE](LICENSE) 文件了解详情。
 
+## 🤖 子智能体架构
+
+项目采用主智能体 + 子智能体的协作架构：
+
+### 🎯 架构设计
+- **主智能体 (adk_companion)**: 负责总体协调、任务分发和用户交互
+- **子智能体 (pr_reviewer)**: 专门负责 PR 审查的专业智能体
+
+### 🤝 协作方式
+- **智能委托**: 主智能体自动识别专业任务并委托给子智能体
+- **独立运行**: 子智能体使用独立的 Token 和工具集
+- **结果整合**: 子智能体结果由主智能体整合后呈现给用户
+
+### 🔧 使用方式
+
+#### 方式1: 自动委托（推荐）
+```bash
+# 启动 Web UI
+adk web
+
+# 在聊天中输入
+"请审查仓库 owner/repo 的 PR #123"
+```
+
+#### 方式2: 直接调用子智能体
+```python
+# 使用智能审查工具
+from adk_companion.tools import smart_review_pr_with_review_token
+
+result = smart_review_pr_with_review_token(
+    repo_path="owner/repo",
+    pr_number=123,
+    auto_merge=True,
+    merge_method="squash"
+)
+
+# 或直接使用审查智能体
+from adk_companion.review_agent import review_agent
+```
+
+#### 方式3: 明确委托
+```bash
+# 在聊天中明确指定
+"委托 pr_reviewer 智能体审查这个 PR"
+"让审查智能体决定是否合并 PR #456"
+```
+
+### 📋 审查标准
+- 代码质量（风格、可读性、最佳实践）
+- 功能完整性（是否实现预期功能）
+- 测试覆盖（是否包含充分测试）
+- 文档更新（是否更新相关文档）
+- 安全性（是否存在安全风险）
+- 性能影响（是否影响性能）
+- 向后兼容性（是否保持兼容）
+
+详细说明请参考 [TOKEN_CONFIG.md](TOKEN_CONFIG.md)
+
 ## 相关链接
 
 - [ADK 官方文档](https://google.github.io/adk-docs/)
 - [Google Cloud Vertex AI](https://cloud.google.com/vertex-ai)
 - [GitHub Actions](https://github.com/features/actions)
+- [Token 配置指南](TOKEN_CONFIG.md)
 
 ## 支持
 
