@@ -95,19 +95,6 @@ ADK 伴随智能体 - 基于 Google ADK 框架的多智能体协作系统，提�
 
    访问 http://localhost:8000 使用 Web UI
 
-### 测试功能
-
-```bash
-# 测试主智能体
-python ollama_demo.py
-
-# 测试 PR 审查功能
-python review_demo.py
-
-# 测试子智能体协作
-python subagent_demo.py
-```
-
 ### 环境变量配置
 
 在 `.env` 文件中配置以下变量：
@@ -203,10 +190,6 @@ adk-companion/
 ├── tools/                # 示例工具
 │   └── bubble_sort.py    # 排序算法示例
 ├── config.py             # 配置管理与验证
-├── subagent_demo.py      # 子智能体协作演示
-├── review_demo.py        # PR审查功能演示
-├── ollama_demo.py        # 主智能体演示
-├── test_merge_debug.py   # 合并功能调试脚本
 ├── requirements.txt      # Python 依赖
 ├── .env                 # 环境变量配置（不提交）
 ├── .env.example         # 环境变量示例
@@ -235,11 +218,6 @@ pip install -r requirements.txt
 
 # 验证配置
 python config.py
-
-# 运行演示脚本
-python ollama_demo.py          # 主智能体演示
-python review_demo.py          # PR审查演示
-python subagent_demo.py        # 子智能体协作演示
 
 # 启动 Web UI
 adk web
