@@ -172,40 +172,12 @@ python test_subagent.py
 python config.py
 ```
 
-### 演示脚本
-
-```bash
-# 测试主智能体
-python ollama_demo.py
-
-# 测试PR审查功能
-python review_demo.py
-
-# 测试子智能体协作
-python subagent_demo.py
-```
-
 ### 添加新工具
 
 1. 在 `tools.py` 中定义新函数
 2. 在 `agent.py` 中注册工具
 3. 更新文档和测试
 4. 如果需要支持多Token，添加 `token_env` 参数
-
-### 部署到生产环境
-
-项目支持部署到 Google Cloud Run：
-
-```bash
-# 构建 Docker 镜像
-docker build -t adk-companion .
-
-# 推送到 Artifact Registry
-gcloud builds submit --tag gcr.io/your-project/adk-companion
-
-# 部署到 Cloud Run
-gcloud run deploy adk-companion --image gcr.io/your-project/adk-companion
-```
 
 ## 依赖清单
 

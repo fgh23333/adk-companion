@@ -1161,8 +1161,6 @@ def merge_pr_with_review_token(
     Returns:
         dict: 包含合并结果或错误信息
     """
-    # 添加调试信息
-    print(f"[DEBUG] merge_pr_with_review_token called with: repo_path={repo_path}, pr_number={pr_number}, merge_method={merge_method}")
     try:
         # 参数验证
         if not repo_path or not isinstance(repo_path, str):
@@ -1183,11 +1181,9 @@ def merge_pr_with_review_token(
         g = Github(token)
         repo = g.get_repo(repo_path)
         pr = repo.get_pull(pr_number)
-        print(f"[DEBUG] PR获取成功: title={pr.title}, state={pr.state}, mergeable={pr.mergeable}, mergeable_state={pr.mergeable_state}")
         
         # 检查 PR 是否可合并
         if not pr.mergeable:
-            print(f"[DEBUG] PR不可合并，返回错误")
             return {
                 "error": "PR 不可合并",
                 "mergeable_state": pr.mergeable_state,
@@ -1196,12 +1192,10 @@ def merge_pr_with_review_token(
         
         # 检查是否有合并冲突
         if pr.mergeable_state == "dirty":
-            print(f"[DEBUG] PR有合并冲突")
             return {"error": "PR 有合并冲突，无法自动合并"}
         
         # 检查是否需要 CI 通过
         if pr.mergeable_state == "blocked":
-            print(f"[DEBUG] PR被阻止合并")
             # 获取状态检查
             status_checks = []
             try:
@@ -1221,119 +1215,50 @@ def merge_pr_with_review_token(
                 "status_checks": status_checks
             }
         
-        # 执行合并前最后检查
-        print(f"[DEBUG] 开始执行合并操作...")
-        print(f"[DEBUG] 最终PR状态检查:")
-        print(f"  - PR状态: {pr.state}")
-        print(f"  - 可合并: {pr.mergeable}")
-        print(f"  - 合并状态: {pr.mergeable_state}")
-        print(f"  - 合并方法: {merge_method}")
-        print(f"  - 提交标题: {commit_title}")
-        print(f"  - 提交信息: {commit_message}")
-        
-        # 刷新PR状态以确保最新信息
-        try:
-            pr.update()
-            print(f"[DEBUG] PR状态已刷新")
-            print(f"  - 刷新后可合并: {pr.mergeable}")
-            print(f"  - 刷新后合并状态: {pr.mergeable_state}")
-        except Exception as update_err:
-            print(f"[DEBUG] 刷新PR状态失败: {update_err}")
-        
         try:
             # 确保参数格式正确
             if not commit_message:
                 commit_message = f"Merge PR #{pr_number}"
-                print(f"[DEBUG] 使用默认提交信息: {commit_message}")
             
             if not commit_title:
                 commit_title = f"Merge pull request #{pr_number} from {pr.head.ref}"
-                print(f"[DEBUG] 使用默认提交标题: {commit_title}")
             
-            print(f"[DEBUG] 调用 pr.merge()...")
             merge_result = pr.merge(
                 commit_message=commit_message,
                 commit_title=commit_title,
                 merge_method=merge_method
             )
-            print(f"[DEBUG] 合并操作成功完成")
-            print(f"[DEBUG] merge_result对象: {merge_result}")
-            print(f"[DEBUG] merge_result类型: {type(merge_result)}")
             
-            # 安全地获取合并结果属性
-            try:
-                merged = getattr(merge_result, 'merged', None)
-                sha = getattr(merge_result, 'sha', None)
-                message = getattr(merge_result, 'message', None)
-                merged_at = getattr(merge_result, 'merged_at', None)
-                
-                print(f"[DEBUG] merge_result.merged: {merged}")
-                print(f"[DEBUG] merge_result.sha: {sha}")
-                print(f"[DEBUG] merge_result.message: {message}")
-                print(f"[DEBUG] merge_result.merged_at: {merged_at}")
-                
-                # 检查关键字段是否为None
-                if merged is None:
-                    print(f"[DEBUG] 警告: merge_result.merged 为 None")
-                if message is None:
-                    print(f"[DEBUG] 警告: merge_result.message 为 None")
-                
-                return {
-                    "status": "success",
-                    "merged": merged,
-                    "sha": sha,
-                    "message": message if message else "合并成功但无消息",
-                    "pr_number": pr_number,
-                    "merge_method": merge_method,
-                    "merged_at": merged_at.isoformat() if merged_at else None,
-                    "token_used": token_env
-                }
-            except Exception as result_err:
-                print(f"[DEBUG] 处理合并结果时发生异常: {result_err}")
-                return {
-                    "status": "partial_success",
-                    "error": f"合并成功但处理结果时出错: {str(result_err)}",
-                    "pr_number": pr_number,
-                    "merge_method": merge_method,
-                    "token_used": token_env
-                }
+            return {
+                "status": "success",
+                "merged": merge_result.merged,
+                "sha": merge_result.sha,
+                "message": merge_result.message,
+                "pr_number": pr_number,
+                "merge_method": merge_method,
+                "merged_at": merge_result.merged_at.isoformat() if merge_result.merged_at else None,
+                "token_used": token_env
+            }
             
         except Exception as e:
-            print(f"[DEBUG] 合并操作发生异常: {e}")
-            print(f"[DEBUG] 异常类型: {type(e).__name__}")
-            
-            # 安全地获取错误信息
-            error_msg = "未知合并错误"
-            try:
-                error_msg = str(e) if e else "异常对象为None"
-                if not error_msg or error_msg == "None" or error_msg.strip() == "":
-                    error_msg = f"合并失败但无法获取错误信息 (异常类型: {type(e).__name__})"
-            except Exception as str_err:
-                error_msg = f"无法转换异常为字符串 (异常类型: {type(e).__name__}, 转换错误: {str_err})"
-            
-            print(f"[DEBUG] 处理后的错误信息: {error_msg}")
+            error_msg = str(e) if e else "未知错误"
+            if not error_msg or error_msg == "None":
+                error_msg = "合并失败，可能是参数错误或权限问题"
             
             # 提供更详细的错误信息
             if "Required status check" in error_msg:
-                print(f"[DEBUG] 识别错误: 必需的状态检查未通过")
                 return {"error": "合并失败：必需的状态检查未通过"}
             elif "Review required" in error_msg:
-                print(f"[DEBUG] 识别错误: 需要代码审查")
                 return {"error": "合并失败：需要代码审查"}
             elif "not authorized" in error_msg.lower():
-                print(f"[DEBUG] 识别错误: 没有权限")
                 return {"error": "合并失败：没有权限合并此 PR"}
             elif "merge conflict" in error_msg.lower():
-                print(f"[DEBUG] 识别错误: 合并冲突")
                 return {"error": "合并失败：存在合并冲突"}
             elif "Base branch was modified" in error_msg:
-                print(f"[DEBUG] 识别错误: 基础分支被修改")
                 return {"error": "合并失败：基础分支已被修改，请更新PR"}
             elif "Pull Request is not mergeable" in error_msg:
-                print(f"[DEBUG] 识别错误: PR不可合并")
                 return {"error": "合并失败：PR不可合并"}
             else:
-                print(f"[DEBUG] 未识别的错误类型，使用处理后的错误信息")
                 return {"error": f"合并失败: {error_msg}"}
         
     except Exception as e:
