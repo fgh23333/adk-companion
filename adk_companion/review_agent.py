@@ -3,8 +3,8 @@ PR 审查智能体
 负责审查 PR 并根据审查结果决定是否合并或提出修改建议
 使用独立的 GitHub Token 进行操作
 """
-
 from google.adk.agents.llm_agent import Agent
+from .config import model_config
 from .tools import (
     read_github_repo,
     check_pr_author_with_review_token,
@@ -113,7 +113,7 @@ REVIEW_SYSTEM_PROMPT = """你是 PR 审查智能体，专门负责审查 Pull Re
 请按照手动全流程的方式，逐步、细致地审查每个 PR。"""
 
 review_agent = Agent(
-    model='gemini-2.5-pro',
+    model=model_config,
     name='pr_reviewer',
     description='PR 审查智能体 - 专门负责审查 Pull Request 并做出智能决策，使用独立的 GitHub Token',
     instruction=REVIEW_SYSTEM_PROMPT,

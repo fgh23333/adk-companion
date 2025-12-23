@@ -1,10 +1,13 @@
 from google.adk.agents.llm_agent import Agent
+
+from .config import model_config
 from .review_agent import review_agent
+from .gitlab_agent import gitlab_agent
 from .tools import (
-    read_adk_codebase, 
-    check_upstream_release, 
-    generate_pr, 
-    generate_evolution_pr, 
+    read_adk_codebase,
+    check_upstream_release,
+    generate_pr,
+    generate_evolution_pr,
     read_github_repo,
     review_pr,
     merge_pr,
@@ -12,6 +15,16 @@ from .tools import (
     check_pr_author,
     request_pr_review,
     smart_review_pr
+)
+from .gitlab_tools import (
+    get_mr_info,
+    get_mr_change_files,
+    get_file_content,
+    post_comment_on_mr,
+    generate_mr,
+    approve_mr,
+    merge_mr,
+    read_gitlab_repo
 )
 
 SYSTEM_PROMPT = """你是 ADK 伴随智能体，具备双重身份：
@@ -32,6 +45,8 @@ SYSTEM_PROMPT = """你是 ADK 伴随智能体，具备双重身份：
   - 使用独立的 REVIEW_GITHUB_TOKEN 确保审查客观性
   - 具备自动代码质量分析、智能决策、自动执行合并等能力
   - 当需要审查 PR、合并 PR 或请求代码审查时，可以委托给这个子智能体
+- **gitlab_mr_reviewer**: GitLab MR 审查智能体 - 专门负责审查 GitLab Merge Request
+  - 当需要审查 GitLab MR 时，可以委托给这个子智能体
   
 **🤝 子智能体协作方式：**
 - **自动委托**：当识别到专业审查任务时，我会自动委托给 pr_reviewer
@@ -109,6 +124,16 @@ SYSTEM_PROMPT = """你是 ADK 伴随智能体，具备双重身份：
   - auto_merge: 是否在审查通过后自动合并（可选，默认 True）
   - merge_method: 合并方法，可选 "merge", "squash", "rebase"（默认 "merge"）
 
+**GitLab MR 管理工具：**
+- create_mr(project_id, title, description, source_branch, target_branch): 创建 GitLab MR
+- get_mr_info(project_id, mr_id): 获取GitLab MR信息
+- get_mr_change_files(project_id, mr_id): 获取GitLab MR涉及文件
+- get_file_content(project_id, file_path, ref): 获取GitLab文件内容
+- post_comment_on_mr(project_id, mr_id, comment): 在GitLab MR下发表评论
+- approve_mr(project_id, mr_id): 批准GitLab MR
+- merge_mr(project_id, mr_id): 合并GitLab MR
+- read_gitlab_repo(project_id, file_path, ref, max_files): 读取 GitLab 仓库的项目结构或指定文件内容
+
 **使用指南：**
 - 当用户询问 ADK 技术问题时，使用 read_adk_codebase 搜索相关源码
 - 当需要检查更新时，使用 check_upstream_release
@@ -143,22 +168,30 @@ SYSTEM_PROMPT = """你是 ADK 伴随智能体，具备双重身份：
 请根据用户需求，选择合适的工具来帮助他们完成任务。"""
 
 root_agent = Agent(
-    model='gemini-2.5-pro',
+    model=model_config,
     name='adk_companion',
     description='ADK 伴随智能体 - 基于 ADK 框架的元智能体，提供专家指导与自动进化能力',
     instruction=SYSTEM_PROMPT,
     tools=[
-        read_adk_codebase, 
-        check_upstream_release, 
-        generate_pr, 
-        generate_evolution_pr, 
+        read_adk_codebase,
+        check_upstream_release,
+        generate_pr,
+        generate_evolution_pr,
         read_github_repo,
         review_pr,
         merge_pr,
         list_prs,
         check_pr_author,
         request_pr_review,
-        smart_review_pr
+        smart_review_pr,
+        get_mr_info,
+        get_mr_change_files,
+        get_file_content,
+        post_comment_on_mr,
+        generate_mr,
+        approve_mr,
+        merge_mr,
+        read_gitlab_repo
     ],
-    sub_agents=[review_agent]
+    sub_agents=[review_agent, gitlab_agent]
 )
