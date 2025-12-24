@@ -62,8 +62,8 @@ def check_upstream_release() -> dict:
 def generate_pr(
     title: str,
     description: str,
-    files_to_modify: str = None,
-    files_to_create: str = None,
+    files_to_modify: dict = None,
+    files_to_create: dict = None,
     base_branch: str = "main",
     branch_prefix: str = "feature",
     target_repo: str = None
@@ -74,8 +74,8 @@ def generate_pr(
     Args:
         title: PR 标题
         description: PR 描述
-        files_to_modify: 要修改的文件字典 (JSON 字符串) {文件路径: 新内容}
-        files_to_create: 要创建的文件字典 (JSON 字符串) {文件路径: 文件内容}
+        files_to_modify: 要修改的文件字典 {文件路径: 新内容}
+        files_to_create: 要创建的文件字典 {文件路径: 文件内容}
         base_branch: 目标分支（默认 main）
         branch_prefix: 分支前缀（默认 feature）
         target_repo: 目标仓库，格式为 "owner/repo"，如果不指定则尝试从环境获取
@@ -85,11 +85,6 @@ def generate_pr(
     """
     try:
         from datetime import datetime
-        
-        if files_to_modify and isinstance(files_to_modify, str):
-            files_to_modify = json.loads(files_to_modify)
-        if files_to_create and isinstance(files_to_create, str):
-            files_to_create = json.loads(files_to_create)
         
         # 检查 GitHub Token
         token = os.getenv("GITHUB_TOKEN")
@@ -362,8 +357,8 @@ def generate_evolution_pr(target_version: str, sample_code: str, dependency_chan
     return generate_pr(
         title=title,
         description=description,
-        files_to_modify=json.dumps(files_to_modify) if files_to_modify else None,
-        files_to_create=json.dumps(files_to_create) if files_to_create else None,
+        files_to_modify=files_to_modify,
+        files_to_create=files_to_create,
         branch_prefix="chore",
         target_repo=target_repo
     )

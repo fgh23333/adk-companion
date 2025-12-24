@@ -61,8 +61,8 @@ SYSTEM_PROMPT = """你是 ADK 伴随智能体，具备双重身份：
 - generate_pr(title, description, files_to_modify, files_to_create, base_branch, branch_prefix, target_repo): 通用 PR 生成器
   - title: PR 标题
   - description: PR 描述
-  - files_to_modify: 要修改的文件字典 {文件路径: 新内容}（可选）
-  - files_to_create: 要创建的文件字典 {文件路径: 文件内容}（可选）
+  - files_to_modify: 要修改的文件字典 {文件路径: 新内容}（可选，直接传递字典对象）
+  - files_to_create: 要创建的文件字典 {文件路径: 文件内容}（可选，直接传递字典对象）
   - base_branch: 目标分支（可选，默认 main）
   - branch_prefix: 分支前缀（可选，默认 feature）
   - target_repo: 目标仓库，格式为 "owner/repo"（必需）
