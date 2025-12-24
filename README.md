@@ -1,378 +1,67 @@
-# ADK Companion
+# ADK Companion Agent
 
-ADK 伴随智能体 - 基于 Google ADK 框架的多智能体协作系统，提供 PR 管理与代码审查能力。
+The ADK Companion Agent is a sophisticated, self-evolving software agent built with the Google Agent Development Kit (ADK). It is designed to assist in the development and maintenance of ADK-based projects, acting as both an expert on the framework and an automated engineer that keeps the project up-to-date with the latest changes.
 
-## 项目愿景
+## Features
 
-构建一个基于 ADK (Agent Development Kit) 框架的多智能体协作系统，采用主智能体 + 子智能体的架构：
+- **Expert Guidance**: The agent can read its own source code and documentation to provide insights and guidance on the ADK framework.
+- **Automated Evolution**: The agent can track upstream changes in the ADK framework, automatically update dependencies, and even generate pull requests with sample code for new features.
+- **Dual-Agent Architecture**: The project uses a main agent for orchestration and a sub-agent for specialized tasks like pull request reviews. This separation of concerns ensures a robust and secure workflow.
+- **Automated PR Management**: The agent can create, review, and merge pull requests. It can also be configured to automatically request reviews from other team members.
 
-1. **主智能体 (The Coordinator)**：负责总体协调、任务分发和用户交互
-2. **PR 审查智能体 (The Reviewer)**：专门负责 Pull Request 审查的专业智能体
+## Architecture
 
-## 功能特性
+The ADK Companion Agent consists of two main components:
 
-### 🤖 多智能体架构
+- **`adk_companion`**: The main agent, responsible for orchestrating the development and maintenance workflow. It has two primary roles:
+    - **The Expert**: Provides guidance on the ADK framework by reading its own source code and documentation.
+    - **The Evolver**: Automates the process of tracking upstream framework updates, upgrading dependencies, and generating demo code for new features.
+- **`pr_reviewer`**: A sub-agent that is responsible for reviewing pull requests. It uses a separate GitHub token to ensure objectivity and to comply with repository rules that prevent users from approving their own pull requests.
 
-- **主智能体 (adk_companion)**: 
-  - ADK 源码解析与使用指导
-  - GitHub 仓库操作与 PR 管理
-  - 智能任务委托与结果整合
+## Tools
 
-- **PR 审查智能体 (pr_reviewer)**:
-  - 深度代码质量分析
-  - 智能审查决策（批准/修改/拒绝）
-  - 自动合并执行
-  - 使用独立 Token 确保客观性
+The ADK Companion Agent comes with a rich set of tools for interacting with the ADK framework and managing the development workflow. These tools include:
 
-### 🛠️ 核心工具集
+- `read_adk_codebase`: Search the ADK source code for a specific keyword.
+- `check_upstream_release`: Check for the latest release of the ADK framework.
+- `generate_pr`: Create a new pull request.
+- `generate_evolution_pr`: Create a pull request to update the project to a new version of the ADK.
+- `read_github_repo`: Read the contents of a file or directory in a GitHub repository.
+- `review_pr`: Review a pull request.
+- `merge_pr`: Merge a pull request.
+- `list_prs`: List all pull requests in a repository.
+- `check_pr_author`: Check the author of a pull request.
+- `request_pr_review`: Request a review for a pull request.
+- `smart_review_pr`: Perform a "smart" review of a pull request, with the option to automatically merge it if it passes all checks.
 
-**代码分析工具：**
-- `read_adk_codebase`: 在 ADK 源码中搜索关键词，提供代码解析
-- `check_upstream_release`: 检查上游 ADK 仓库的最新发布版本
+## Getting Started
 
-**PR 管理工具：**
-- `generate_pr`: 通用 PR 生成器
-- `review_pr`: PR 审查与批准
-- `merge_pr`: PR 合并操作
-- `smart_review_pr`: 智能 PR 审查（支持自动合并）
+To get started with the ADK Companion Agent, follow these steps:
 
-**多 Token 支持：**
-- `GITHUB_TOKEN`: 主智能体常规操作
-- `REVIEW_GITHUB_TOKEN`: PR 审查智能体专用
+1.  **Clone the repository**:
+    ```bash
+    git clone https://github.com/fgh23333/adk-companion.git
+    ```
+2.  **Install the dependencies**:
+    ```bash
+    pip install -r requirements.txt
+    ```
+3.  **Set up your environment variables**:
+    - Create a `.env` file in the root of the project.
+    - Add the following environment variables to the `.env` file:
+        - `GITHUB_TOKEN`: Your personal GitHub access token.
+        - `REVIEW_GITHUB_TOKEN`: A separate GitHub access token for the `pr_reviewer` agent.
+4.  **Run the application**:
+    ```bash
+    python main.py
+    ```
 
-### 🚀 运行模式
+The application will be available at `http://localhost:8080`.
 
-- **Web UI 模式**: 通过 FastAPI 提供的 Web 界面交互
-- **命令行模式**: 直接调用智能体进行任务处理
-- **智能委托模式**: 自动识别专业任务并委托给子智能体
+## Usage
 
-## 快速开始
+You can interact with the ADK Companion Agent by sending it prompts. For example, to ask the agent to check for a new release of the ADK framework, you could send it the following prompt:
 
-### 环境要求
+> Check for the latest release of the ADK framework.
 
-- Python 3.8+
-- Google Cloud 项目（用于 Vertex AI）
-- GitHub Token（用于 API 访问）
-
-### 安装步骤
-
-1. **克隆仓库**
-   ```bash
-   git clone https://github.com/fgh23333/adk-companion.git
-   cd adk-companion
-   ```
-
-2. **创建虚拟环境**
-   ```bash
-   python -m venv .venv
-   # Windows
-   .\.venv\Scripts\activate
-   # Linux/Mac
-   source .venv/bin/activate
-   ```
-
-3. **安装依赖**
-   ```bash
-   pip install -r requirements.txt
-   ```
-
-4. **配置环境变量**
-   ```bash
-   cp .env.example .env
-   # 编辑 .env 文件，填入你的配置
-   ```
-
-5. **验证配置**
-   ```bash
-   python config.py
-   ```
-
-6. **启动服务**
-   ```bash
-   # 使用 ADK 命令启动 Web UI
-   adk web
-   ```
-
-   访问 http://localhost:8000 使用 Web UI
-
-### 环境变量配置
-
-在 `.env` 文件中配置以下变量：
-
-```env
-# Google Cloud / Vertex AI 配置
-GOOGLE_GENAI_USE_VERTEXAI=1
-GOOGLE_CLOUD_PROJECT=your-gcp-project-id
-GOOGLE_CLOUD_LOCATION=us-central1
-
-# GitHub Tokens
-GITHUB_TOKEN=ghp_your_main_token_here              # 主智能体使用
-REVIEW_GITHUB_TOKEN=ghp_your_review_token_here     # PR审查智能体专用
-
-# 可选配置
-UPSTREAM_REPO=google/adk-python
-```
-
-#### Token 配置说明
-
-- **GITHUB_TOKEN**: 主智能体用于创建PR、读取仓库等常规操作
-- **REVIEW_GITHUB_TOKEN**: PR审查智能体专用，用于审查、合并PR等操作
-
-> 💡 **推荐**: 使用不同GitHub账户的Token，确保审查的独立性和客观性
-> 
-> 🚨 **重要**: GitHub 不允许用户批准自己的 PR，因此需要双 Token 架构
-
-详细配置说明请参考 [TOKEN_CONFIG.md](TOKEN_CONFIG.md)
-
-### 获取配置值
-
-- **Google Cloud Project ID**: 在 [GCP 控制台](https://console.cloud.google.com/) 顶部查看
-- **GitHub Token**: 在 [GitHub Settings](https://github.com/settings/tokens) 生成 Personal Access Token（需要 `repo` 权限）
-- **GCP 服务账号**: 在 IAM & Admin → Service Accounts 创建并下载 JSON 密钥
-
-## 使用指南
-
-### 作为 ADK 专家助手
-
-启动 Web UI 后，你可以询问：
-- "如何在 ADK 中创建自定义工具？"
-- "Agent 类的构造参数有哪些？"
-- "给我看一个 ADK 的示例代码"
-
-智能体会调用 `read_adk_codebase` 工具搜索相关源码并给出准确答案。
-
-### PR 管理与审查
-
-#### 智能委托（推荐）
-```bash
-# 在 Web UI 中输入
-"请审查仓库 owner/repo 的 PR #123"
-"帮我合并这个 PR，使用 squash 方法"
-"检查这个 PR 的代码质量"
-```
-
-#### 直接使用工具
-```python
-from adk_companion.tools import smart_review_pr_with_review_token
-
-# 智能 PR 审查（支持自动合并）
-result = smart_review_pr_with_review_token(
-    repo_path="owner/repo",
-    pr_number=123,
-    auto_merge=True,
-    merge_method="squash"
-)
-```
-
-#### 手动委托子智能体
-```bash
-# 在 Web UI 中明确指定
-"委托 pr_reviewer 智能体审查这个 PR"
-"让审查智能体决定是否合并 PR #456"
-```
-
-### 多智能体协作示例
-
-1. **自动识别**: 主智能体识别到 PR 审查任务
-2. **智能委托**: 自动委托给 pr_reviewer 子智能体
-3. **专业处理**: 子智能体使用独立 Token 进行深度审查
-4. **结果整合**: 审查结果由主智能体整合后呈现
-
-## 项目结构
-
-```
-adk-companion/
-├── adk_companion/         # 核心模块
-│   ├── agent.py          # 主智能体定义
-│   ├── review_agent.py   # PR审查子智能体
-│   ├── tools.py          # 工具函数集（支持多Token）
-│   └── __init__.py       # 模块导出
-├── tools/                # 示例工具
-│   └── bubble_sort.py    # 排序算法示例
-├── config.py             # 配置管理与验证
-├── requirements.txt      # Python 依赖
-├── .env                 # 环境变量配置（不提交）
-├── .env.example         # 环境变量示例
-├── TOKEN_CONFIG.md      # Token配置详细说明
-├── LICENSE              # 开源协议
-└── README.md           # 项目文档
-```
-
-### 核心文件说明
-
-- **agent.py**: 主智能体，负责协调和任务分发
-- **review_agent.py**: PR审查专业智能体，使用独立Token
-- **tools.py**: 完整的工具集，支持多Token架构
-- **config.py**: 配置管理和验证，支持参数检查
-
-## 开发指南
-
-### 本地开发
-
-```bash
-# 激活虚拟环境
-.\.venv\Scripts\activate
-
-# 安装依赖
-pip install -r requirements.txt
-
-# 验证配置
-python config.py
-
-# 启动 Web UI
-adk web
-```
-
-### 配置验证
-
-```bash
-# 检查配置状态
-python config.py
-
-# 验证所有参数
-python config.py --validate
-
-# 测试特定功能
-python test_merge_debug.py     # 测试合并功能
-```
-
-### 添加新工具
-
-1. 在 `tools.py` 中定义新函数
-2. 如果需要支持多Token，添加 `token_env` 参数
-3. 在 `agent.py` 或 `review_agent.py` 中注册工具
-4. 更新相关文档和测试
-
-### 多Token支持
-
-所有支持多Token的工具都遵循以下模式：
-```python
-def my_tool(repo_path: str, token_env: str = "GITHUB_TOKEN") -> dict:
-    token = os.getenv(token_env)
-    # 使用 token 进行操作
-```
-
-## 依赖清单
-
-### 核心依赖
-- `google-adk>=1.21.0` - ADK 框架
-- `fastapi>=0.115.0,<0.124.0` - Web 框架  
-- `uvicorn>=0.22.0` - ASGI 服务器
-
-### 工具依赖
-- `requests>=2.31.0` - HTTP 请求
-- `PyGithub>=2.8.0` - GitHub API 客户端
-- `GitPython>=3.1.0` - Git 操作
-- `python-dotenv>=1.0.0` - 环境变量管理
-- `PyYAML>=6.0.0,<7.0.0` - YAML 配置解析
-
-### Python 版本要求
-- **Python 3.8+** （推荐 3.12+）
-
-## 贡献指南
-
-1. Fork 本仓库
-2. 创建特性分支 (`git checkout -b feature/amazing-feature`)
-3. 提交更改 (`git commit -m 'Add amazing feature'`)
-4. 推送到分支 (`git push origin feature/amazing-feature`)
-5. 创建 Pull Request
-
-## 许可证
-
-本项目采用 Apache 2.0 许可证 - 查看 [LICENSE](LICENSE) 文件了解详情。
-
-## 🤖 多智能体架构
-
-项目采用主智能体 + 子智能体的协作架构，实现专业化分工：
-
-### 🎯 架构设计
-- **主智能体 (adk_companion)**: 负责总体协调、任务分发和用户交互
-- **PR 审查智能体 (pr_reviewer)**: 专门负责 PR 审查的专业智能体
-
-### 🤝 协作方式
-- **智能委托**: 主智能体自动识别专业任务并委托给子智能体
-- **独立运行**: 子智能体使用独立的 Token 和工具集
-- **结果整合**: 子智能体结果由主智能体整合后呈现给用户
-- **强制委托**: 当检测到自创建 PR 时，必须委托给子智能体（GitHub 限制）
-
-### 🔧 使用方式
-
-#### 方式1: 自动委托（推荐）
-```bash
-# 启动 Web UI
-adk web
-
-# 在聊天中输入
-"请审查仓库 owner/repo 的 PR #123"
-"这个 PR 可以合并吗？"
-```
-
-#### 方式2: 直接调用工具
-```python
-from adk_companion.tools import smart_review_pr_with_review_token
-
-# 智能 PR 审查（支持自动合并）
-result = smart_review_pr_with_review_token(
-    repo_path="owner/repo",
-    pr_number=123,
-    auto_merge=True,
-    merge_method="squash"
-)
-```
-
-#### 方式3: 明确委托
-```bash
-# 在聊天中明确指定
-"委托 pr_reviewer 智能体审查这个 PR"
-"让审查智能体决定是否合并 PR #456"
-```
-
-### 📋 审查标准
-- **代码质量**: 代码风格、可读性、最佳实践
-- **功能完整性**: 是否实现预期功能，是否有遗漏
-- **测试覆盖**: 是否包含充分的测试用例
-- **文档更新**: 是否更新了相关文档
-- **安全性**: 是否存在安全漏洞或风险
-- **性能影响**: 是否对性能产生负面影响
-- **向后兼容**: 是否保持向后兼容性
-
-### 🚨 GitHub 限制处理
-- GitHub 不允许用户批准自己的 PR
-- 系统自动检测 PR 作者，避免自我批准
-- 使用双 Token 架构确保合规操作
-
-详细配置说明请参考 [TOKEN_CONFIG.md](TOKEN_CONFIG.md)
-
-## 相关链接
-
-- [ADK 官方文档](https://google.github.io/adk-docs/)
-- [Google Cloud Vertex AI](https://cloud.google.com/vertex-ai)
-- [GitHub Personal Access Tokens](https://github.com/settings/tokens)
-- [Token 配置指南](TOKEN_CONFIG.md)
-
-## 常见问题
-
-### Q: 为什么需要两个 GitHub Token？
-A: GitHub 不允许用户批准自己的 PR。主智能体使用 GITHUB_TOKEN 进行常规操作，PR 审查智能体使用 REVIEW_GITHUB_TOKEN 进行独立的审查和合并操作。
-
-### Q: 如何确保审查的客观性？
-A: 推荐使用不同 GitHub 账户的 Token，并设置适当的权限分离：
-- GITHUB_TOKEN: repo 权限（读写）
-- REVIEW_GITHUB_TOKEN: repo 权限（读写）
-
-### Q: 智能体能处理哪些类型的 PR？
-A: 支持所有类型的 PR，包括：
-- 代码变更
-- 文档更新  
-- 配置修改
-- 依赖升级
-
-### Q: 如何自定义审查标准？
-A: 可以修改 `review_agent.py` 中的 `REVIEW_SYSTEM_PROMPT` 来调整审查标准和权重。
-
-## 支持
-
-如有问题或建议，请：
-- 创建 [Issue](https://github.com/fgh23333/adk-companion/issues)
-- 查看 [TOKEN_CONFIG.md](TOKEN_CONFIG.md) 了解详细配置
-- 检查项目中的演示脚本了解使用方法
+The agent will then use the `check_upstream_release` tool to check for the latest release and will respond with the version number.
