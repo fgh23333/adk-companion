@@ -563,7 +563,7 @@ def merge_pr(
                 "message": merge_result.message,
                 "pr_number": pr_number,
                 "merge_method": merge_method,
-                "merged_at": merge_result.merged_at.isoformat() if merge_result.merged_at else None,
+                "merged_at": merge_result.merged_at.isoformat() if hasattr(merge_result, "merged_at") and merge_result.merged_at else None,
                 "token_used": token_env
             }
             
@@ -1209,7 +1209,7 @@ def merge_pr_with_review_token(
                 "message": merge_result.message,
                 "pr_number": pr_number,
                 "merge_method": merge_method,
-                "merged_at": merge_result.merged_at.isoformat() if merge_result.merged_at else None,
+                "merged_at": merge_result.merged_at.isoformat() if hasattr(merge_result, "merged_at") and merge_result.merged_at else None,
                 "token_used": token_env
             }
             
