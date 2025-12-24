@@ -4,7 +4,6 @@ PR 审查智能体
 使用独立的 GitHub Token 进行操作
 """
 from google.adk.agents.llm_agent import Agent
-from .config import model_config
 from .tools import (
     read_github_repo,
     check_pr_author_with_review_token,

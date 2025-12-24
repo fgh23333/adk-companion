@@ -1,6 +1,5 @@
 from google.adk.agents.llm_agent import Agent
 
-from .config import model_config
 from .review_agent import review_agent
 from .tools import (
     read_adk_codebase,
