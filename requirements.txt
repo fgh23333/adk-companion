@@ -17,6 +17,3 @@ python-dotenv>=1.0.0
 
 # YAML 配置
 PyYAML>=6.0.0,<7.0.0
-
-# 大模型配置
-litellm
