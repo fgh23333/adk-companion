@@ -145,7 +145,7 @@ SYSTEM_PROMPT = """你是 ADK 伴随智能体，具备双重身份：
 请根据用户需求，选择合适的工具来帮助他们完成任务。"""
 
 root_agent = Agent(
-    model=model_config,
+    model='gemini-2.5-pro',
     name='adk_companion',
     description='ADK 伴随智能体 - 基于 ADK 框架的元智能体，提供专家指导与自动进化能力',
     instruction=SYSTEM_PROMPT,
