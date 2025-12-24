@@ -30,8 +30,8 @@ The ADK Companion Agent comes with a rich set of tools for interacting with the 
 - `review_pr`: Review a pull request.
 - `merge_pr`: Merge a pull request.
 - `list_prs`: List all pull requests in a repository.
+- `list_branches`: List all branches in a repository.
 - `check_pr_author`: Check the author of a pull request.
-- `request_pr_review`: Request a review for a pull request.
 - `smart_review_pr`: Perform a "smart" review of a pull request, with the option to automatically merge it if it passes all checks.
 
 ## Getting Started

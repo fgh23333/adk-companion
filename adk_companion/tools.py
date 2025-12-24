@@ -1517,3 +1517,28 @@ def selection_sort(arr: list[float]) -> list[float]:
                 min_idx = j
         sorted_arr[i], sorted_arr[min_idx] = sorted_arr[min_idx], sorted_arr[i]
     return sorted_arr
+
+def list_branches(repo_path: str, token_env: str = "GITHUB_TOKEN") -> dict:
+    """
+    获取指定仓库的分支列表
+
+    Args:
+        repo_path: 仓库路径，格式为 "owner/repo"
+        token_env: GitHub Token 环境变量名（默认 "GITHUB_TOKEN"）
+
+    Returns:
+        dict: 包含分支列表或错误信息
+    """
+    try:
+        token = os.getenv(token_env)
+        g = Github(token) if token else Github()
+        repo = g.get_repo(repo_path)
+        branches = repo.get_branches()
+        branch_list = [branch.name for branch in branches]
+        return {
+            "status": "success",
+            "repo": repo_path,
+            "branches": branch_list
+        }
+    except Exception as e:
+        return {"error": f"获取分支列表失败: {str(e)}"}

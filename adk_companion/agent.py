@@ -10,6 +10,7 @@ from .tools import (
     review_pr,
     merge_pr,
     list_prs,
+    list_branches,
     check_pr_author,
     request_pr_review,
     smart_review_pr,
@@ -93,6 +94,9 @@ SYSTEM_PROMPT = """你是 ADK 伴随智能体，具备双重身份：
   - direction: 排序方向，可选 "asc", "desc"（默认 "desc"）
   - limit: 最大返回数量（默认 20）
 
+- list_branches(repo_path): 获取指定仓库的分支列表
+  - repo_path: 仓库路径，格式为 "owner/repo"
+
 - check_pr_author(repo_path, pr_number): 检查 PR 的创建者信息
   - repo_path: 仓库路径，格式为 "owner/repo"
   - pr_number: PR 编号
@@ -158,6 +162,7 @@ root_agent = Agent(
         review_pr,
         merge_pr,
         list_prs,
+        list_branches,
         check_pr_author,
         request_pr_review,
         smart_review_pr,
