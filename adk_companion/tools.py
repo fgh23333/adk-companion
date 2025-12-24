@@ -237,16 +237,14 @@ Files changed: {', '.join(all_files_changed)}"""
         return {"error": f"生成 PR 时出错: {str(e)}"}
 
 def read_github_repo(
-    repo_path: str = None,
     file_path: str = None,
     branch: str = "main",
     max_files: int = 50
 ) -> dict:
     """
-    读取 GitHub 仓库的项目结构或指定文件内容
+    读取 GitHub 仓库 "fgh23333/adk-companion" 的项目结构或指定文件内容
     
     Args:
-        repo_path: 仓库路径，格式为 "owner/repo"，默认使用当前项目仓库
         file_path: 指定文件路径（相对于仓库根目录），如果为空则返回目录结构
         branch: 分支名，默认为 main
         max_files: 最大文件数量限制（仅在读取目录结构时生效）
@@ -258,20 +256,7 @@ def read_github_repo(
         token = os.getenv("GITHUB_TOKEN")
         g = Github(token) if token else Github()
         
-        # 如果没有指定仓库，尝试从当前 git remote 获取
-        if not repo_path:
-            try:
-                import git
-                repo_path_obj = Path(__file__).parent.parent.parent
-                repo = git.Repo(repo_path_obj)
-                remote_url = repo.remotes.origin.url
-                
-                if 'github.com' in remote_url:
-                    repo_path = remote_url.split('github.com/')[1].replace('.git', '')
-                else:
-                    return {"error": "无法确定仓库路径，请手动指定 repo_path 参数"}
-            except Exception:
-                return {"error": "无法自动获取仓库信息，请手动指定 repo_path 参数"}
+        repo_path = "fgh23333/adk-companion"
         
         # 获取仓库对象
         repo = g.get_repo(repo_path)

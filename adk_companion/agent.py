@@ -2,7 +2,6 @@ from google.adk.agents.llm_agent import Agent
 
 from .config import model_config
 from .review_agent import review_agent
-from .gitlab_agent import gitlab_agent
 from .tools import (
     read_adk_codebase,
     check_upstream_release,
@@ -15,21 +14,6 @@ from .tools import (
     check_pr_author,
     request_pr_review,
     smart_review_pr
-)
-from .gitlab_tools import (
-    get_mr_info,
-    get_mr_change_files,
-    get_file_content,
-    post_comment_on_mr,
-    create_branch,
-    create_commit,
-    create_mr,
-    approve_mr,
-    merge_mr,
-    read_gitlab_repo,
-    compare_branches,
-    get_commit_info,
-    list_branches
 )
 
 SYSTEM_PROMPT = """你是 ADK 伴随智能体，具备双重身份：
@@ -50,8 +34,6 @@ SYSTEM_PROMPT = """你是 ADK 伴随智能体，具备双重身份：
   - 使用独立的 REVIEW_GITHUB_TOKEN 确保审查客观性
   - 具备自动代码质量分析、智能决策、自动执行合并等能力
   - 当需要审查 PR、合并 PR 或请求代码审查时，可以委托给这个子智能体
-- **gitlab_mr_reviewer**: GitLab MR 审查智能体 - 专门负责审查 GitLab Merge Request
-  - 当需要审查 GitLab MR 时，可以委托给这个子智能体
   
 **🤝 子智能体协作方式：**
 - **自动委托**：当识别到专业审查任务时，我会自动委托给 pr_reviewer
@@ -69,8 +51,7 @@ SYSTEM_PROMPT = """你是 ADK 伴随智能体，具备双重身份：
 - check_upstream_release(): 检查上游 ADK 仓库的最新发布版本，返回版本信息
 
 **项目结构工具：**
-- read_github_repo(repo_path, file_path, branch, max_files): 读取 GitHub 仓库的项目结构或指定文件内容
-  - repo_path: 仓库路径，格式为 "owner/repo"，默认使用当前项目仓库
+- read_github_repo(file_path, branch, max_files): 读取 GitHub 仓库 "fgh23333/adk-companion" 的项目结构或指定文件内容
   - file_path: 指定文件路径（相对于仓库根目录），如果为空则返回目录结构
   - branch: 分支名（默认为 main）
   - max_files: 最大文件数量限制（仅在读取目录结构时生效，默认50）
@@ -129,23 +110,6 @@ SYSTEM_PROMPT = """你是 ADK 伴随智能体，具备双重身份：
   - auto_merge: 是否在审查通过后自动合并（可选，默认 True）
   - merge_method: 合并方法，可选 "merge", "squash", "rebase"（默认 "merge"）
 
-**GitLab MR 管理工具：**
-- create_branch(project_id, branch_name, ref): 创建新分支
-- create_commit(project_id, branch_name, commit_message, actions, author_name, author_email): 提交文件
-  - actions: JSON字符串，格式 [{"action": "create/update", "file_path": "path", "content": "content"}]
-  - author_name: 提交者姓名 (可选)
-  - author_email: 提交者邮箱 (可选)
-- create_mr(project_id, title, description, source_branch, target_branch): 创建 GitLab MR
-- get_mr_info(project_id, mr_id): 获取GitLab MR信息
-- get_mr_change_files(project_id, mr_id): 获取GitLab MR涉及文件
-- get_file_content(project_id, file_path, ref): 获取GitLab文件内容
-- get_commit_info(project_id, commit_sha): 获取指定提交的详细信息
-- list_branches(project_id, search): 列出仓库分支
-- post_comment_on_mr(project_id, mr_id, comment): 在GitLab MR下发表评论
-- approve_mr(project_id, mr_id): 批准GitLab MR
-- merge_mr(project_id, mr_id): 合并GitLab MR
-- read_gitlab_repo(project_id, file_path, ref, max_files): 读取 GitLab 仓库的项目结构或指定文件内容
-- compare_branches(project_id, source, target): 对比两个分支的差异
 
 **使用指南：**
 - 当用户询问 ADK 技术问题时，使用 read_adk_codebase 搜索相关源码
@@ -196,20 +160,7 @@ root_agent = Agent(
         list_prs,
         check_pr_author,
         request_pr_review,
-        smart_review_pr,
-        get_mr_info,
-        get_mr_change_files,
-        get_file_content,
-        post_comment_on_mr,
-        create_branch,
-        create_commit,
-        create_mr,
-        approve_mr,
-        merge_mr,
-        read_gitlab_repo,
-        compare_branches,
-        get_commit_info,
-        list_branches
+        smart_review_pr
     ],
-    sub_agents=[review_agent, gitlab_agent]
+    sub_agents=[review_agent]
 )
