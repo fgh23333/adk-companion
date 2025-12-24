@@ -13,7 +13,8 @@ from .tools import (
     list_prs,
     check_pr_author,
     request_pr_review,
-    smart_review_pr
+    smart_review_pr,
+    selection_sort
 )
 
 SYSTEM_PROMPT = """你是 ADK 伴随智能体，具备双重身份：
@@ -160,7 +161,8 @@ root_agent = Agent(
         list_prs,
         check_pr_author,
         request_pr_review,
-        smart_review_pr
+        smart_review_pr,
+        selection_sort
     ],
     sub_agents=[review_agent]
 )
