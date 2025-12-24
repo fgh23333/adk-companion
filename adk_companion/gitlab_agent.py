@@ -14,7 +14,10 @@ from .gitlab_tools import (
     create_mr,
     approve_mr,
     merge_mr,
-    read_gitlab_repo
+    read_gitlab_repo,
+    compare_branches,
+    get_commit_info,
+    list_branches
 )
 
 GITLAB_REVIEW_SYSTEM_PROMPT = """你是 GitLab MR 审查智能体，专门负责审查 Merge Request 并做出智能决策。
@@ -42,10 +45,13 @@ GITLAB_REVIEW_SYSTEM_PROMPT = """你是 GitLab MR 审查智能体，专门负责
 - get_mr_info(project_id, mr_id): 获取mr信息
 - get_mr_change_files(project_id, mr_id): 获取mr涉及文件
 - get_file_content(project_id, file_path, ref): 获取文件内容
+- get_commit_info(project_id, commit_sha): 获取指定提交的详细信息
+- list_branches(project_id, search): 列出仓库分支
 - post_comment_on_mr(project_id, mr_id, comment): 在mr下发表评论
 - approve_mr(project_id, mr_id): 批准 MR
 - merge_mr(project_id, mr_id): 合并 MR
 - read_gitlab_repo(project_id, file_path, ref, max_files): 读取 GitLab 仓库的项目结构或指定文件内容
+- compare_branches(project_id, source, target): 对比两个分支的差异
 
 请按照专业的审查流程，逐步、细致地审查每个 MR。"""
 
@@ -64,6 +70,9 @@ gitlab_agent = Agent(
         create_mr,
         approve_mr,
         merge_mr,
-        read_gitlab_repo
+        read_gitlab_repo,
+        compare_branches,
+        get_commit_info,
+        list_branches
     ]
 )

@@ -87,7 +87,7 @@ def create_commit(
     project_id: int,
     branch_name: str,
     commit_message: str,
-    actions: str,  # JSON string
+    actions: str,
     author_name: str = None,
     author_email: str = None
 ) -> dict:
@@ -106,7 +106,10 @@ def create_commit(
         gl = get_gitlab_instance()
         project = gl.projects.get(project_id)
         
-        actions_list = json.loads(actions)
+        try:
+            actions_list = json.loads(actions)
+        except json.JSONDecodeError:
+            return {"error": "actions 参数必须是有效的 JSON 字符串"}
         
         commit_data = {
             'branch': branch_name,
@@ -194,12 +197,146 @@ def merge_mr(project_id: int, mr_id: int) -> dict:
     except Exception as e:
         return {"error": f"合并 MR 失败: {e}"}
 
-def read_gitlab_repo(project_id: int, file_path: str = None, ref: str = "main", max_files: int = 50) -> dict:
-    """读取 GitLab 仓库的项目结构或指定文件内容"""
+def compare_branches(project_id: int, source: str, target: str) -> dict:
+    """
+    对比两个分支或提交之间的差异
+    
+    Args:
+        project_id: 项目 ID
+        source: 源分支或提交 hash (from)
+        target: 目标分支或提交 hash (to)
+    """
     try:
         gl = get_gitlab_instance()
         project = gl.projects.get(project_id)
         
+        # 注意：GitLab API 的 compare 参数顺序是 from=source, to=target
+        # 但通常我们要看 source 相对于 target 改了什么，所以 API 里 from 是 target (base), to 是 source (head)
+        comparison = project.repository_compare(target, source)
+        
+        diffs = []
+        for diff in comparison['diffs']:
+            diffs.append({
+                'new_path': diff['new_path'],
+                'old_path': diff['old_path'],
+                'new_file': diff['new_file'],
+                'renamed_file': diff['renamed_file'],
+                'deleted_file': diff['deleted_file'],
+                'diff': diff['diff'][:1000] + "..." if len(diff['diff']) > 1000 else diff['diff'] # 截断过长的 diff
+            })
+            
+        return {
+            "status": "success",
+            "commit": comparison['commit'], # The latest commit on source
+            "diffs": diffs,
+            "compare_timeout": comparison['compare_timeout'],
+            "compare_error": comparison['compare_error']
+        }
+    except Exception as e:
+        return {"error": f"对比分支失败: {e}"}
+
+def get_commit_info(project_id: int, commit_sha: str) -> dict:
+    """
+    获取指定提交的详细信息
+    
+    Args:
+        project_id: 项目 ID
+        commit_sha: 提交的 SHA 哈希值
+    """
+    try:
+        gl = get_gitlab_instance()
+        project = gl.projects.get(project_id)
+        commit = project.commits.get(commit_sha)
+        
+        # 获取提交的变更内容 (diff)
+        diff = commit.diff()
+        
+        return {
+            "status": "success",
+            "id": commit.id,
+            "short_id": commit.short_id,
+            "title": commit.title,
+            "message": commit.message,
+            "author_name": commit.author_name,
+            "author_email": commit.author_email,
+            "authored_date": commit.authored_date,
+            "committer_name": commit.committer_name,
+            "committer_email": commit.committer_email,
+            "committed_date": commit.committed_date,
+            "stats": commit.stats,
+            "web_url": commit.web_url,
+            "diffs": diff[:10] # 限制返回的 diff 数量，避免内容过大
+        }
+    except Exception as e:
+        return {"error": f"获取提交信息失败: {e}"}
+
+def list_branches(project_id: int, search: str = None) -> dict:
+    """
+    列出 GitLab 仓库的分支
+    
+    Args:
+        project_id: 项目 ID
+        search: 搜索关键词（可选）
+    """
+    try:
+        gl = get_gitlab_instance()
+        project = gl.projects.get(project_id)
+        
+        branches = project.branches.list(search=search, iterator=True)
+        branch_list = []
+        for branch in branches:
+            branch_list.append({
+                "name": branch.name,
+                "merged": branch.merged,
+                "protected": branch.protected,
+                "default": branch.default,
+                "commit": {
+                    "id": branch.commit['id'],
+                    "message": branch.commit['message'],
+                    "committed_date": branch.commit['committed_date']
+                }
+            })
+            if len(branch_list) >= 50: # 限制返回数量
+                break
+                
+        return {
+            "status": "success",
+            "project_name": project.name,
+            "total_count": len(branch_list), # 注意：iterator 模式下这里只是已获取的数量
+            "branches": branch_list
+        }
+    except Exception as e:
+        return {"error": f"获取分支列表失败: {e}"}
+
+def read_gitlab_repo(project_id: int, file_path: str = None, ref: str = None, max_files: int = 50) -> dict:
+    """
+    读取 GitLab 仓库的项目结构或指定文件内容
+    
+    Args:
+        project_id: 项目 ID
+        file_path: 文件路径（可选，若提供则读取文件内容）
+        ref: 分支名或 commit SHA（可选，若不提供则使用项目默认分支）
+        max_files: 最大返回文件数（仅在读取目录结构时生效）
+    """
+    try:
+        gl = get_gitlab_instance()
+        project = gl.projects.get(project_id)
+        
+        # 自动检测默认分支
+        if not ref:
+            if hasattr(project, 'default_branch') and project.default_branch:
+                ref = project.default_branch
+            else:
+                ref = 'main' # Fallback
+        
+        # 检查仓库是否为空
+        try:
+            project.branches.list(iterator=True).next()
+        except StopIteration:
+             return {"error": "仓库为空，没有任何分支或提交", "project_name": project.name}
+        except Exception:
+            pass # 忽略其他错误，继续尝试
+
         if file_path:
             # 读取指定文件内容
             try:
@@ -208,10 +345,13 @@ def read_gitlab_repo(project_id: int, file_path: str = None, ref: str = "main", 
                     "file_path": file_path,
                     "content": file_content.decode().decode('utf-8'),
                     "size": file_content.size,
-                    "commit_id": file_content.commit_id
+                    "commit_id": file_content.commit_id,
+                    "ref": ref
                 }
-            except Exception as e:
-                return {"error": f"读取文件 '{file_path}' 失败: {str(e)}"}
+            except gitlab.exceptions.GitlabGetError as e:
+                if e.response_code == 404:
+                    return {"error": f"文件 '{file_path}' 在分支 '{ref}' 上不存在"}
+                return {"error": f"读取文件失败: {e}"}
         else:
             # 获取目录结构
             try:
@@ -230,7 +370,17 @@ def read_gitlab_repo(project_id: int, file_path: str = None, ref: str = "main", 
                     "total_files": len(file_tree),
                     "file_tree": file_tree[:max_files]
                 }
-            except Exception as e:
-                return {"error": f"获取目录结构失败: {str(e)}"}
+            except gitlab.exceptions.GitlabGetError as e:
+                if e.response_code == 404:
+                     # 尝试列出可用分支
+                    try:
+                        branches = [b.name for b in project.branches.list(iterator=True)]
+                        return {
+                            "error": f"分支 '{ref}' 不存在或无法访问", 
+                            "available_branches": branches[:10]
+                        }
+                    except:
+                        pass
+                return {"error": f"获取目录结构失败: {e}"}
     except Exception as e:
         return {"error": f"GitLab API 调用失败: {str(e)}"}

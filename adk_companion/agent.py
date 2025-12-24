@@ -26,7 +26,10 @@ from .gitlab_tools import (
     create_mr,
     approve_mr,
     merge_mr,
-    read_gitlab_repo
+    read_gitlab_repo,
+    compare_branches,
+    get_commit_info,
+    list_branches
 )
 
 SYSTEM_PROMPT = """你是 ADK 伴随智能体，具备双重身份：
@@ -129,16 +132,20 @@ SYSTEM_PROMPT = """你是 ADK 伴随智能体，具备双重身份：
 **GitLab MR 管理工具：**
 - create_branch(project_id, branch_name, ref): 创建新分支
 - create_commit(project_id, branch_name, commit_message, actions, author_name, author_email): 提交文件
+  - actions: JSON字符串，格式 [{"action": "create/update", "file_path": "path", "content": "content"}]
   - author_name: 提交者姓名 (可选)
   - author_email: 提交者邮箱 (可选)
 - create_mr(project_id, title, description, source_branch, target_branch): 创建 GitLab MR
 - get_mr_info(project_id, mr_id): 获取GitLab MR信息
 - get_mr_change_files(project_id, mr_id): 获取GitLab MR涉及文件
 - get_file_content(project_id, file_path, ref): 获取GitLab文件内容
+- get_commit_info(project_id, commit_sha): 获取指定提交的详细信息
+- list_branches(project_id, search): 列出仓库分支
 - post_comment_on_mr(project_id, mr_id, comment): 在GitLab MR下发表评论
 - approve_mr(project_id, mr_id): 批准GitLab MR
 - merge_mr(project_id, mr_id): 合并GitLab MR
 - read_gitlab_repo(project_id, file_path, ref, max_files): 读取 GitLab 仓库的项目结构或指定文件内容
+- compare_branches(project_id, source, target): 对比两个分支的差异
 
 **使用指南：**
 - 当用户询问 ADK 技术问题时，使用 read_adk_codebase 搜索相关源码
@@ -199,7 +206,10 @@ root_agent = Agent(
         create_mr,
         approve_mr,
         merge_mr,
-        read_gitlab_repo
+        read_gitlab_repo,
+        compare_branches,
+        get_commit_info,
+        list_branches
     ],
     sub_agents=[review_agent, gitlab_agent]
 )
