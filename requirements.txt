@@ -1,3 +1,4 @@
+
 # ADK 核心依赖
 google-adk>=1.21.0
 
@@ -16,4 +17,7 @@ GitPython>=3.1.0
 python-dotenv>=1.0.0
 
 # YAML 配置
-PyYAML>=6.0.0,<7.0.0
+PyYAML>=6.0.0,<7.0.0>
+
+# Google Cloud Firestore
+google-cloud-firestore
