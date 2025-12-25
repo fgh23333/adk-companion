@@ -13,8 +13,7 @@ from .tools import (
     list_branches,
     check_pr_author,
     request_pr_review,
-    smart_review_pr,
-    selection_sort
+    smart_review_pr
 )
 
 SYSTEM_PROMPT = """你是 ADK 伴随智能体，具备双重身份：
@@ -52,10 +51,11 @@ SYSTEM_PROMPT = """你是 ADK 伴随智能体，具备双重身份：
 - check_upstream_release(): 检查上游 ADK 仓库的最新发布版本，返回版本信息
 
 **项目结构工具：**
-- read_github_repo(file_path, branch, max_files): 读取 GitHub 仓库 "fgh23333/adk-companion" 的项目结构或指定文件内容
+- read_github_repo(file_path, branch, max_files, target_repo): 读取 GitHub 仓库的项目结构或指定文件内容
   - file_path: 指定文件路径（相对于仓库根目录），如果为空则返回目录结构
   - branch: 分支名（默认为 main）
   - max_files: 最大文件数量限制（仅在读取目录结构时生效，默认50）
+  - target_repo: 目标仓库，格式为 "owner/repo"（可选，默认读取自身仓库）
 
 **PR 生成工具：**
 - generate_pr(title, description, files_to_modify, files_to_create, base_branch, branch_prefix, target_repo): 通用 PR 生成器
@@ -165,8 +165,7 @@ root_agent = Agent(
         list_branches,
         check_pr_author,
         request_pr_review,
-        smart_review_pr,
-        selection_sort
+        smart_review_pr
     ],
     sub_agents=[review_agent]
 )

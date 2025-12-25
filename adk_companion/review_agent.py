@@ -10,6 +10,7 @@ from .tools import (
     review_pr_with_review_token,
     merge_pr_with_review_token,
     request_pr_review_with_review_token,
+    list_prs_with_review_token,
 )
 
 REVIEW_SYSTEM_PROMPT = """你是 PR 审查智能体，专门负责审查 Pull Request 并做出智能决策。
@@ -34,6 +35,10 @@ REVIEW_SYSTEM_PROMPT = """你是 PR 审查智能体，专门负责审查 Pull Re
 - **向后兼容**：是否保持向后兼容性
 
 **可用工具：**
+- list_prs_with_review_token(repo_path, state, sort, direction, limit): 列出仓库的 PR
+  - 获取需要审查的PR列表
+  - 使用专用的 REVIEW_GITHUB_TOKEN
+
 - check_pr_author_with_review_token(repo_path, pr_number): 检查 PR 作者信息
   - 验证PR创建者，避免自我批准
   - 使用专用的 REVIEW_GITHUB_TOKEN
@@ -50,8 +55,9 @@ REVIEW_SYSTEM_PROMPT = """你是 PR 审查智能体，专门负责审查 Pull Re
   - 当需要人工审查时请求其他用户协助
   - 使用专用的 REVIEW_GITHUB_TOKEN
 
-- read_github_repo(repo_path, file_path, branch, max_files): 读取仓库文件
+- read_github_repo(file_path, branch, max_files, target_repo): 读取仓库文件
   - 用于深度分析代码内容和项目结构
+  - target_repo: 目标仓库，格式为 "owner/repo"（可选，默认读取自身仓库）
 
 **手动全流程审查步骤：**
 1. **检查PR基本信息**：使用 check_pr_author_with_review_token 验证PR状态
@@ -117,6 +123,7 @@ review_agent = Agent(
     description='PR 审查智能体 - 专门负责审查 Pull Request 并做出智能决策，使用独立的 GitHub Token',
     instruction=REVIEW_SYSTEM_PROMPT,
     tools=[
+        list_prs_with_review_token,
         check_pr_author_with_review_token,
         review_pr_with_review_token,
         merge_pr_with_review_token,

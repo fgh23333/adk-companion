@@ -228,15 +228,17 @@ def generate_pr(
 def read_github_repo(
     file_path: str = None,
     branch: str = "main",
-    max_files: int = 50
+    max_files: int = 50,
+    target_repo: str = "fgh23333/adk-companion"
 ) -> dict:
     """
-    读取 GitHub 仓库 "fgh23333/adk-companion" 的项目结构或指定文件内容
+    读取 GitHub 仓库的项目结构或指定文件内容
     
     Args:
         file_path: 指定文件路径（相对于仓库根目录），如果为空则返回目录结构
         branch: 分支名，默认为 main
         max_files: 最大文件数量限制（仅在读取目录结构时生效）
+        target_repo: 目标仓库，格式为 "owner/repo" (默认 "fgh23333/adk-companion")
     
     Returns:
         dict: 包含文件结构或文件内容的字典
@@ -245,10 +247,8 @@ def read_github_repo(
         token = os.getenv("GITHUB_TOKEN")
         g = Github(token) if token else Github()
         
-        repo_path = "fgh23333/adk-companion"
-        
         # 获取仓库对象
-        repo = g.get_repo(repo_path)
+        repo = g.get_repo(target_repo)
         
         if file_path:
             # 读取指定文件内容
@@ -304,7 +304,7 @@ def read_github_repo(
                 process_directory(contents)
                 
                 return {
-                    "repo": repo_path,
+                    "repo": target_repo,
                     "branch": branch,
                     "total_files": len([f for f in file_tree if f["type"] == "file"]),
                     "total_dirs": len([f for f in file_tree if f["type"] == "dir"]),
@@ -1488,30 +1488,6 @@ def _perform_intelligent_review(pr_summary_json: str, repo) -> dict:
             "mergeable_state": pr_summary["mergeable_state"]
         }
     }
-
-
-def selection_sort(arr: list[float]) -> list[float]:
-    """
-    使用选择排序算法对数字列表进行排序。
-
-    Args:
-        arr: 数字列表。
-
-    Returns:
-        排序后的新列表。
-    """
-    if not isinstance(arr, list) or not all(isinstance(x, (int, float)) for x in arr):
-        raise TypeError("输入必须是数字列表")
-
-    sorted_arr = arr.copy()
-    n = len(sorted_arr)
-    for i in range(n):
-        min_idx = i
-        for j in range(i + 1, n):
-            if sorted_arr[j] < sorted_arr[min_idx]:
-                min_idx = j
-        sorted_arr[i], sorted_arr[min_idx] = sorted_arr[min_idx], sorted_arr[i]
-    return sorted_arr
 
 def list_branches(repo_path: str, token_env: str = "GITHUB_TOKEN") -> dict:
     """
