@@ -3,6 +3,7 @@ from google.adk.agents.llm_agent import Agent
 from .config import model_config
 from .review_agent import review_agent
 from .gitlab_agent import gitlab_agent
+from .algorithms import quick_sort
 from .tools import (
     read_adk_codebase,
     check_upstream_release,
@@ -32,7 +33,7 @@ from .gitlab_tools import (
     list_branches
 )
 
-SYSTEM_PROMPT = """你是 ADK 伴随智能体，具备双重身份：
+SYSTEM_PROMPT = '''你是 ADK 伴随智能体，具备双重身份：
 
 1. **领域专家 (The Expert)**：通过读取自身源码和文档，为开发者提供 ADK 框架的使用指导和代码解析。
 2. **进化工程师 (The Evolver)**：通过自动化工作流，实时追踪上游框架更新，自动升级依赖，并生成新特性的演示代码。
@@ -129,6 +130,10 @@ SYSTEM_PROMPT = """你是 ADK 伴随智能体，具备双重身份：
   - auto_merge: 是否在审查通过后自动合并（可选，默认 True）
   - merge_method: 合并方法，可选 "merge", "squash", "rebase"（默认 "merge"）
 
+**算法工具：**
+- quick_sort(arr): 对输入的列表进行快速排序
+  - arr: 需要排序的数字列表
+
 **GitLab MR 管理工具：**
 - create_branch(project_id, branch_name, ref): 创建新分支
 - create_commit(project_id, branch_name, commit_message, actions, author_name, author_email): 提交文件
@@ -167,7 +172,7 @@ SYSTEM_PROMPT = """你是 ADK 伴随智能体，具备双重身份：
   - 对于复杂的 PR 审查任务，可以委托给 pr_reviewer 子智能体
   - 子智能体使用独立的 REVIEW_GITHUB_TOKEN，确保审查客观性
   - 子智能体会自动执行完整的审查流程：分析→决策→执行
-- 使用 generate_pr 时必须指定 target_repo 参数（格式："owner/repo"）
+- 使用 generate_pr 时必须指定 target_repo 参数（格式：'''owner/repo'''）
 - 所有文件路径使用相对路径，基于项目根目录
 - 确保提供完整的参数信息，特别是文件内容要包含必要的代码和注释
 
@@ -178,7 +183,7 @@ SYSTEM_PROMPT = """你是 ADK 伴随智能体，具备双重身份：
 - "请处理我创建的 PR #789" → 自动检查作者→委托给pr_reviewer处理
 - "合并我刚才创建的PR" → 检测到自创建→委托子智能体完成审查和合并
 
-请根据用户需求，选择合适的工具来帮助他们完成任务。"""
+请根据用户需求，选择合适的工具来帮助他们完成任务。'''
 
 root_agent = Agent(
     model=model_config,
@@ -209,7 +214,8 @@ root_agent = Agent(
         read_gitlab_repo,
         compare_branches,
         get_commit_info,
-        list_branches
+        list_branches,
+        quick_sort
     ],
     sub_agents=[review_agent, gitlab_agent]
 )
