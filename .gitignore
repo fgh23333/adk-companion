@@ -11,3 +11,4 @@ site/
 *.json
 key.json
 .adk/
+sessions.db
