@@ -8,18 +8,46 @@
 
 import os
 import json
+import re
 import gitlab
 from dotenv import load_dotenv
 
 load_dotenv()
 
-def get_gitlab_instance():
+def get_gitlab_instance(use_review_token: bool = False):
     """获取 GitLab 实例"""
     gitlab_url = os.getenv("GITLAB_URL")
-    private_token = os.getenv("GITLAB_PRIVATE_TOKEN")
+    if use_review_token:
+        token_name = "REVIEW_GITLAB_PRIVATE_TOKEN"
+        private_token = os.getenv(token_name)
+    else:
+        token_name = "GITLAB_PRIVATE_TOKEN"
+        private_token = os.getenv(token_name)
+
     if not gitlab_url or not private_token:
-        raise ValueError("请在 .env 文件中设置 GITLAB_URL 和 GITLAB_PRIVATE_TOKEN")
+        raise ValueError(f"请在 .env 文件中设置 GITLAB_URL 和 {token_name}")
     return gitlab.Gitlab(gitlab_url, private_token=private_token)
+
+def check_mr_author(project_id: int, mr_id: int) -> dict:
+    """检查 MR 的创建者信息"""
+    try:
+        gl_main = get_gitlab_instance(use_review_token=False)
+        main_user = gl_main.user.username
+        
+        project = gl_main.projects.get(project_id)
+        mr = project.mergerequests.get(mr_id)
+        author = mr.author['username']
+        
+        is_own_mr = author == main_user
+        
+        return {
+            "status": "success",
+            "mr_author": author,
+            "current_user": main_user,
+            "is_own_mr": is_own_mr
+        }
+    except Exception as e:
+        return {"error": f"检查 MR 作者失败: {e}"}
 
 def get_mr_info(project_id: int, mr_id: int) -> dict:
     """获取 GitLab MR 信息"""
@@ -52,10 +80,10 @@ def get_file_content(project_id: int, file_path: str, ref: str) -> dict:
     except Exception as e:
         return {"error": f"获取文件内容失败: {e}"}
 
-def post_comment_on_mr(project_id: int, mr_id: int, comment: str) -> dict:
+def post_comment_on_mr(project_id: int, mr_id: int, comment: str, use_review_token: bool = False) -> dict:
     """在 GitLab MR 下发表评论"""
     try:
-        gl = get_gitlab_instance()
+        gl = get_gitlab_instance(use_review_token=use_review_token)
         project = gl.projects.get(project_id)
         mr = project.mergerequests.get(mr_id)
         mr.notes.create({'body': comment})
@@ -88,8 +116,8 @@ def create_commit(
     branch_name: str,
     commit_message: str,
     actions: str,
-    author_name: str = None,
-    author_email: str = None
+    author_name: str,
+    author_email: str
 ) -> dict:
     """
     提交文件到 GitLab 分支
@@ -97,12 +125,20 @@ def create_commit(
     Args:
         project_id: 项目 ID
         branch_name: 分支名称
-        commit_message: 提交信息
+        commit_message: 提交信息，必须以 '#' 开头，后跟数字 (例如 #12345)
         actions: 操作列表 (JSON 字符串)，格式为 [{"action": "create", "file_path": "path", "content": "content"}]
-        author_name: 提交者姓名 (可选)
-        author_email: 提交者邮箱 (可选)
+        author_name: 提交者姓名 (必需)
+        author_email: 提交者邮箱 (必需)
     """
     try:
+        # 验证提交信息格式
+        if not re.match(r'^#\d+', commit_message):
+            return {"error": "无效的提交信息格式。它必须以 '#' 开头，后跟数字 (例如 #12345)。"}
+        
+        # 验证作者信息
+        if not author_name or not author_email:
+            return {"error": "提交者姓名和邮箱是必需的。"}
+
         gl = get_gitlab_instance()
         project = gl.projects.get(project_id)
         
@@ -114,13 +150,10 @@ def create_commit(
         commit_data = {
             'branch': branch_name,
             'commit_message': commit_message,
-            'actions': actions_list
+            'actions': actions_list,
+            'author_name': author_name,
+            'author_email': author_email
         }
-        
-        if author_name:
-            commit_data['author_name'] = author_name
-        if author_email:
-            commit_data['author_email'] = author_email
         
         commit = project.commits.create(commit_data)
         return {"status": "success", "commit_id": commit.id, "message": "提交成功"}
@@ -157,11 +190,11 @@ def create_mr(
     except Exception as e:
         return {"error": f"创建 MR 失败: {e}"}
 
-def approve_mr(project_id: int, mr_id: int) -> dict:
+def approve_mr(project_id: int, mr_id: int, use_review_token: bool = False) -> dict:
     """批准 GitLab MR"""
     try:
         print(f"[DEBUG] Approving MR !{mr_id} in project {project_id}")
-        gl = get_gitlab_instance()
+        gl = get_gitlab_instance(use_review_token=use_review_token)
         project = gl.projects.get(project_id)
         mr = project.mergerequests.get(mr_id)
         
