@@ -10,6 +10,7 @@ import os
 import json
 import re
 import gitlab
+import json_repair
 from dotenv import load_dotenv
 
 load_dotenv()
@@ -25,16 +26,25 @@ def get_gitlab_instance(use_review_token: bool = False):
         private_token = os.getenv(token_name)
 
     if not gitlab_url or not private_token:
-        raise ValueError(f"请在 .env 文件中设置 GITLAB_URL 和 {token_name}")
+        error_message = (
+            f"请在 .env 文件中设置 GITLAB_URL 和 {token_name}。"
+            f" {token_name} 是审查代理所必需的，以确保遵循多代理审查工作流程。"
+        )
+        raise ValueError(error_message)
     return gitlab.Gitlab(gitlab_url, private_token=private_token)
 
-def check_mr_author(project_id: int, mr_id: int) -> dict:
+def _get_project(gl, repo_path: str):
+    """Helper function to get a project by its path."""
+    return gl.projects.get(repo_path)
+
+def check_mr_author(repo_path: str, mr_id: int) -> dict:
     """检查 MR 的创建者信息"""
     try:
         gl_main = get_gitlab_instance(use_review_token=False)
+        gl_main.auth()  # Force authentication to populate user object
         main_user = gl_main.user.username
         
-        project = gl_main.projects.get(project_id)
+        project = _get_project(gl_main, repo_path)
         mr = project.mergerequests.get(mr_id)
         author = mr.author['username']
         
@@ -49,55 +59,55 @@ def check_mr_author(project_id: int, mr_id: int) -> dict:
     except Exception as e:
         return {"error": f"检查 MR 作者失败: {e}"}
 
-def get_mr_info(project_id: int, mr_id: int) -> dict:
+def get_mr_info(repo_path: str, mr_id: int) -> dict:
     """获取 GitLab MR 信息"""
     try:
         gl = get_gitlab_instance()
-        project = gl.projects.get(project_id)
+        project = _get_project(gl, repo_path)
         mr = project.mergerequests.get(mr_id)
         return mr.attributes
     except Exception as e:
         return {"error": f"获取 MR 信息失败: {e}"}
 
-def get_mr_change_files(project_id: int, mr_id: int) -> dict:
+def get_mr_change_files(repo_path: str, mr_id: int) -> dict:
     """获取 GitLab MR 涉及文件"""
     try:
         gl = get_gitlab_instance()
-        project = gl.projects.get(project_id)
+        project = _get_project(gl, repo_path)
         mr = project.mergerequests.get(mr_id)
         changes = mr.changes()
         return changes
     except Exception as e:
         return {"error": f"获取 MR 变更文件失败: {e}"}
 
-def get_file_content(project_id: int, file_path: str, ref: str) -> dict:
+def get_file_content(repo_path: str, file_path: str, ref: str) -> dict:
     """获取 GitLab 文件内容"""
     try:
         gl = get_gitlab_instance()
-        project = gl.projects.get(project_id)
+        project = _get_project(gl, repo_path)
         file_content = project.files.get(file_path=file_path, ref=ref)
         return file_content.decode()
     except Exception as e:
         return {"error": f"获取文件内容失败: {e}"}
 
-def post_comment_on_mr(project_id: int, mr_id: int, comment: str, use_review_token: bool = False) -> dict:
+def post_comment_on_mr(repo_path: str, mr_id: int, comment: str, use_review_token: bool = False) -> dict:
     """在 GitLab MR 下发表评论"""
     try:
         gl = get_gitlab_instance(use_review_token=use_review_token)
-        project = gl.projects.get(project_id)
+        project = _get_project(gl, repo_path)
         mr = project.mergerequests.get(mr_id)
         mr.notes.create({'body': comment})
         return {"status": "success", "message": "评论已发布"}
     except Exception as e:
         return {"error": f"发表评论失败: {e}"}
 
-def create_branch(project_id: int, branch_name: str, ref: str = "main") -> dict:
+def create_branch(repo_path: str, branch_name: str, ref: str = "main") -> dict:
     """
     创建 GitLab 分支
     """
     try:
         gl = get_gitlab_instance()
-        project = gl.projects.get(project_id)
+        project = _get_project(gl, repo_path)
         
         # 检查分支是否存在
         try:
@@ -112,7 +122,7 @@ def create_branch(project_id: int, branch_name: str, ref: str = "main") -> dict:
         return {"error": f"创建分支失败: {e}"}
 
 def create_commit(
-    project_id: int,
+    repo_path: str,
     branch_name: str,
     commit_message: str,
     actions: str,
@@ -123,9 +133,9 @@ def create_commit(
     提交文件到 GitLab 分支
     
     Args:
-        project_id: 项目 ID
+        repo_path: 仓库路径 (e.g., 'namespace/project-name')
         branch_name: 分支名称
-        commit_message: 提交信息，必须以 '#' 开头，后跟数字 (例如 #12345)
+        commit_message: 提交信息，必须以 '#' 开头，后跟六位数字 (例如 #123456)
         actions: 操作列表 (JSON 字符串)，格式为 [{"action": "create", "file_path": "path", "content": "content"}]
         author_name: 提交者姓名 (必需)
         author_email: 提交者邮箱 (必需)
@@ -133,20 +143,36 @@ def create_commit(
     try:
         # 验证提交信息格式
         if not re.match(r'^#\d+', commit_message):
-            return {"error": "无效的提交信息格式。它必须以 '#' 开头，后跟数字 (例如 #12345)。"}
+            return {"error": "无效的提交信息格式。它必须以 '#' 开头，后跟六位数字 (例如 #123456)。"}
         
         # 验证作者信息
         if not author_name or not author_email:
             return {"error": "提交者姓名和邮箱是必需的。"}
 
         gl = get_gitlab_instance()
-        project = gl.projects.get(project_id)
+        project = _get_project(gl, repo_path)
         
-        try:
-            actions_list = json.loads(actions)
-        except json.JSONDecodeError:
-            return {"error": "actions 参数必须是有效的 JSON 字符串"}
-        
+        actions_list = []
+        if isinstance(actions, list):
+            actions_list = actions
+        elif isinstance(actions, str):
+            try:
+                # First try standard load
+                actions_list = json.loads(actions)
+            except json.JSONDecodeError:
+                try:
+                    # If standard load fails, try json_repair which is robust against common LLM JSON errors
+                    # like unescaped control characters, missing quotes, etc.
+                    actions_list = json_repair.repair_json(actions, return_objects=True)
+                except Exception as e:
+                    return {"error": f"actions 参数解析失败: 无效的 JSON 字符串，尝试修复也失败. Error: {e}"}
+            
+            # Validate structure
+            if not isinstance(actions_list, list):
+                 return {"error": "actions 参数解析后必须是列表 (List)"}
+        else:
+             return {"error": f"actions 参数类型错误: 必须是 JSON 字符串或列表，但在收到的是 {type(actions)}"}
+
         commit_data = {
             'branch': branch_name,
             'commit_message': commit_message,
@@ -155,13 +181,28 @@ def create_commit(
             'author_email': author_email
         }
         
+        print(f"[DEBUG] create_commit payload preview: branch={branch_name}, message={commit_message}, author={author_name}")
+        print(f"[DEBUG] Actions count: {len(actions_list)}")
+        # Log first action summary for debugging (avoid printing full content if huge)
+        if actions_list:
+            first_action = actions_list[0].copy()
+            if 'content' in first_action and len(first_action['content']) > 100:
+                first_action['content'] = first_action['content'][:100] + "..."
+            print(f"[DEBUG] First action preview: {first_action}")
+
         commit = project.commits.create(commit_data)
         return {"status": "success", "commit_id": commit.id, "message": "提交成功"}
+    except gitlab.exceptions.GitlabCreateError as e:
+        print(f"[ERROR] GitlabCreateError: {e.response_code}, Body: {e.response_body}, Error: {e.error_message}")
+        return {"error": f"提交失败: {e.response_code}", "details": e.error_message}
     except Exception as e:
+        print(f"[ERROR] create_commit failed with unexpected error: {type(e).__name__}: {e}")
+        import traceback
+        traceback.print_exc()
         return {"error": f"提交失败: {e}"}
 
 def create_mr(
-    project_id: int,
+    repo_path: str,
     title: str,
     description: str,
     source_branch: str,
@@ -172,7 +213,7 @@ def create_mr(
     """
     try:
         gl = get_gitlab_instance()
-        project = gl.projects.get(project_id)
+        project = _get_project(gl, repo_path)
         
         mr = project.mergerequests.create({
             'source_branch': source_branch,
@@ -190,38 +231,52 @@ def create_mr(
     except Exception as e:
         return {"error": f"创建 MR 失败: {e}"}
 
-def approve_mr(project_id: int, mr_id: int, use_review_token: bool = False) -> dict:
-    """批准 GitLab MR"""
+def review_mr(repo_path: str, mr_id: int, review_comment: str, use_review_token: bool = False) -> dict:
+    """
+    提交 GitLab MR 审查意见 (不执行正式 approve 动作)
+    
+    Args:
+        repo_path: 仓库路径
+        mr_id: MR ID
+        review_comment: 审查意见（必需，应明确是否通过）
+        use_review_token: 是否使用审查 Token
+    """
+    token_in_use = "REVIEW_GITLAB_PRIVATE_TOKEN" if use_review_token else "GITLAB_PRIVATE_TOKEN"
+    print(f"[DEBUG] Attempting to review MR !{mr_id} in project {repo_path} using {token_in_use}")
+
     try:
-        print(f"[DEBUG] Approving MR !{mr_id} in project {project_id}")
         gl = get_gitlab_instance(use_review_token=use_review_token)
-        project = gl.projects.get(project_id)
+        print("[DEBUG] GitLab instance created.")
+
+        project = _get_project(gl, repo_path)
+        print(f"[DEBUG] Fetched project: {project.name_with_namespace}")
+
         mr = project.mergerequests.get(mr_id)
-        
-        # 尝试进行批准
+        print(f"[DEBUG] Fetched MR: '{mr.title}'")
+        print(f"[DEBUG] MR Author: {mr.author['username']}")
+        print(f"[DEBUG] MR State: {mr.state}")
+
+        # Post review comment
+        print("[DEBUG] Posting review comment...")
         try:
-            mr.approve()
-            return {"status": "success", "message": f"MR !{mr_id} 已批准"}
-        except gitlab.exceptions.GitlabUpdateError as e:
-            if e.response_code == 404:
-                return {
-                    "error": f"批准失败 (404): 可能是因为没有权限批准（例如不能批准自己的MR），或者该 GitLab 实例未启用批准功能。",
-                    "detail": str(e)
-                }
-            elif e.response_code == 401:
-                 return {"error": "批准失败 (401): 认证失败，请检查 Token 权限", "detail": str(e)}
-            else:
-                raise e
+            mr.notes.create({'body': review_comment})
+            print("[DEBUG] Review comment posted successfully.")
+            return {"status": "success", "message": f"已成功发表审查意见到 MR !{mr_id}"}
+        except Exception as note_e:
+            print(f"[ERROR] Failed to post review comment: {note_e}")
+            return {"error": f"发表审查意见失败: {note_e}"}
 
     except Exception as e:
-        print(f"[ERROR] approve_mr failed: {e}")
-        return {"error": f"批准 MR 失败: {e}"}
+        print(f"[ERROR] An unexpected error occurred in review_mr: {type(e).__name__}: {e}")
+        import traceback
+        traceback.print_exc()
+        return {"error": f"审查 MR 失败: {e}"}
 
-def merge_mr(project_id: int, mr_id: int) -> dict:
+def merge_mr(repo_path: str, mr_id: int) -> dict:
     """合并 GitLab MR"""
     try:
         gl = get_gitlab_instance()
-        project = gl.projects.get(project_id)
+        project = _get_project(gl, repo_path)
         mr = project.mergerequests.get(mr_id)
         if not mr.mergeable:
             return {"error": "MR 不可合并", "merge_status": mr.merge_status}
@@ -230,21 +285,19 @@ def merge_mr(project_id: int, mr_id: int) -> dict:
     except Exception as e:
         return {"error": f"合并 MR 失败: {e}"}
 
-def compare_branches(project_id: int, source: str, target: str) -> dict:
+def compare_branches(repo_path: str, source: str, target: str) -> dict:
     """
     对比两个分支或提交之间的差异
     
     Args:
-        project_id: 项目 ID
+        repo_path: 仓库路径 (e.g., 'namespace/project-name')
         source: 源分支或提交 hash (from)
         target: 目标分支或提交 hash (to)
     """
     try:
         gl = get_gitlab_instance()
-        project = gl.projects.get(project_id)
+        project = _get_project(gl, repo_path)
         
-        # 注意：GitLab API 的 compare 参数顺序是 from=source, to=target
-        # 但通常我们要看 source 相对于 target 改了什么，所以 API 里 from 是 target (base), to 是 source (head)
         comparison = project.repository_compare(target, source)
         
         diffs = []
@@ -255,12 +308,12 @@ def compare_branches(project_id: int, source: str, target: str) -> dict:
                 'new_file': diff['new_file'],
                 'renamed_file': diff['renamed_file'],
                 'deleted_file': diff['deleted_file'],
-                'diff': diff['diff'][:1000] + "..." if len(diff['diff']) > 1000 else diff['diff'] # 截断过长的 diff
+                'diff': diff['diff'][:1000] + "..." if len(diff['diff']) > 1000 else diff['diff']
             })
             
         return {
             "status": "success",
-            "commit": comparison['commit'], # The latest commit on source
+            "commit": comparison['commit'],
             "diffs": diffs,
             "compare_timeout": comparison['compare_timeout'],
             "compare_error": comparison['compare_error']
@@ -268,20 +321,19 @@ def compare_branches(project_id: int, source: str, target: str) -> dict:
     except Exception as e:
         return {"error": f"对比分支失败: {e}"}
 
-def get_commit_info(project_id: int, commit_sha: str) -> dict:
+def get_commit_info(repo_path: str, commit_sha: str) -> dict:
     """
     获取指定提交的详细信息
     
     Args:
-        project_id: 项目 ID
+        repo_path: 仓库路径 (e.g., 'namespace/project-name')
         commit_sha: 提交的 SHA 哈希值
     """
     try:
         gl = get_gitlab_instance()
-        project = gl.projects.get(project_id)
+        project = _get_project(gl, repo_path)
         commit = project.commits.get(commit_sha)
         
-        # 获取提交的变更内容 (diff)
         diff = commit.diff()
         
         return {
@@ -298,22 +350,65 @@ def get_commit_info(project_id: int, commit_sha: str) -> dict:
             "committed_date": commit.committed_date,
             "stats": commit.stats,
             "web_url": commit.web_url,
-            "diffs": diff[:10] # 限制返回的 diff 数量，避免内容过大
+            "diffs": diff[:10]
         }
     except Exception as e:
         return {"error": f"获取提交信息失败: {e}"}
 
-def list_branches(project_id: int, search: str = None) -> dict:
+def list_commits(repo_path: str, ref_name: str = None, max_commits: int = 20) -> dict:
+    """
+    列出 GitLab 仓库的提交记录
+    
+    Args:
+        repo_path: 仓库路径 (e.g., 'namespace/project-name')
+        ref_name: 分支、标签或提交 SHA (可选, 默认为默认分支)
+        max_commits: 返回的最大提交数量 (可选, 默认 20)
+    """
+    try:
+        gl = get_gitlab_instance()
+        project = _get_project(gl, repo_path)
+        
+        # Build options for the list call
+        options = {'per_page': max_commits}
+        if ref_name:
+            options['ref_name'] = ref_name
+            
+        commits = project.commits.list(iterator=True, **options)
+        
+        commit_list = []
+        for commit in commits:
+            commit_list.append({
+                "id": commit.id,
+                "short_id": commit.short_id,
+                "title": commit.title,
+                "author_name": commit.author_name,
+                "committed_date": commit.committed_date,
+                "web_url": commit.web_url
+            })
+            if len(commit_list) >= max_commits:
+                break
+        
+        return {
+            "status": "success",
+            "repo_path": repo_path,
+            "ref_name": ref_name or project.default_branch,
+            "commit_count": len(commit_list),
+            "commits": commit_list
+        }
+    except Exception as e:
+        return {"error": f"获取提交列表失败: {e}"}
+
+def list_branches(repo_path: str, search: str = None) -> dict:
     """
     列出 GitLab 仓库的分支
     
     Args:
-        project_id: 项目 ID
+        repo_path: 仓库路径 (e.g., 'namespace/project-name')
         search: 搜索关键词（可选）
     """
     try:
         gl = get_gitlab_instance()
-        project = gl.projects.get(project_id)
+        project = _get_project(gl, repo_path)
         
         branches = project.branches.list(search=search, iterator=True)
         branch_list = []
@@ -329,49 +424,46 @@ def list_branches(project_id: int, search: str = None) -> dict:
                     "committed_date": branch.commit['committed_date']
                 }
             })
-            if len(branch_list) >= 50: # 限制返回数量
+            if len(branch_list) >= 50:
                 break
                 
         return {
             "status": "success",
             "project_name": project.name,
-            "total_count": len(branch_list), # 注意：iterator 模式下这里只是已获取的数量
+            "total_count": len(branch_list),
             "branches": branch_list
         }
     except Exception as e:
         return {"error": f"获取分支列表失败: {e}"}
 
-def read_gitlab_repo(project_id: int, file_path: str = None, ref: str = None, max_files: int = 50) -> dict:
+def read_gitlab_repo(repo_path: str, file_path: str = None, ref: str = None, max_files: int = 50) -> dict:
     """
     读取 GitLab 仓库的项目结构或指定文件内容
     
     Args:
-        project_id: 项目 ID
+        repo_path: 仓库路径 (e.g., 'namespace/project-name')
         file_path: 文件路径（可选，若提供则读取文件内容）
         ref: 分支名或 commit SHA（可选，若不提供则使用项目默认分支）
         max_files: 最大返回文件数（仅在读取目录结构时生效）
     """
     try:
         gl = get_gitlab_instance()
-        project = gl.projects.get(project_id)
+        project = _get_project(gl, repo_path)
         
-        # 自动检测默认分支
         if not ref:
             if hasattr(project, 'default_branch') and project.default_branch:
                 ref = project.default_branch
             else:
-                ref = 'main' # Fallback
+                ref = 'main'
         
-        # 检查仓库是否为空
         try:
             project.branches.list(iterator=True).next()
         except StopIteration:
              return {"error": "仓库为空，没有任何分支或提交", "project_name": project.name}
         except Exception:
-            pass # 忽略其他错误，继续尝试
+            pass
 
         if file_path:
-            # 读取指定文件内容
             try:
                 file_content = project.files.get(file_path=file_path, ref=ref)
                 return {
@@ -386,7 +478,6 @@ def read_gitlab_repo(project_id: int, file_path: str = None, ref: str = None, ma
                     return {"error": f"文件 '{file_path}' 在分支 '{ref}' 上不存在"}
                 return {"error": f"读取文件失败: {e}"}
         else:
-            # 获取目录结构
             try:
                 items = project.repository_tree(ref=ref, recursive=True, all=True)
                 file_tree = []
@@ -398,14 +489,13 @@ def read_gitlab_repo(project_id: int, file_path: str = None, ref: str = None, ma
                         "path": item['path'],
                     })
                 return {
-                    "project_id": project_id,
+                    "repo_path": repo_path,
                     "ref": ref,
                     "total_files": len(file_tree),
                     "file_tree": file_tree[:max_files]
                 }
             except gitlab.exceptions.GitlabGetError as e:
                 if e.response_code == 404:
-                     # 尝试列出可用分支
                     try:
                         branches = [b.name for b in project.branches.list(iterator=True)]
                         return {
