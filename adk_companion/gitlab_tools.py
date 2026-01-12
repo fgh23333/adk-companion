@@ -152,26 +152,95 @@ def create_commit(
         gl = get_gitlab_instance()
         project = _get_project(gl, repo_path)
         
-        actions_list = []
+        # 1. 解析 actions 参数
+        raw_actions = None
         if isinstance(actions, list):
-            actions_list = actions
+            raw_actions = actions
         elif isinstance(actions, str):
             try:
                 # First try standard load
-                actions_list = json.loads(actions)
+                raw_actions = json.loads(actions)
             except json.JSONDecodeError:
                 try:
-                    # If standard load fails, try json_repair which is robust against common LLM JSON errors
-                    # like unescaped control characters, missing quotes, etc.
-                    actions_list = json_repair.repair_json(actions, return_objects=True)
+                    # Attempt to sanitize common LLM errors (unescaped quotes in content)
+                    # Heuristic: Find "content": "..." and escape quotes inside
+                    def escape_content_quotes(match):
+                        prefix, content, suffix = match.groups()
+                        # Replace unescaped quotes with escaped quotes
+                        # Match valid escapes (Group 1) OR naked quotes
+                        def replace_quote(m):
+                            return m.group(1) if m.group(1) else '\\"'
+                        
+                        # Regex for existing escapes vs naked quotes
+                        content_escaped = re.sub(r'(\\(?:["\\/bfnrt]|u[0-9a-fA-F]{4}))|"', replace_quote, content)
+                        return f"{prefix}{content_escaped}{suffix}"
+
+                    # Regex to capture "content": "..." value roughly
+                    # Ends at " followed by , or } (ignoring whitespace)
+                    # This heuristic works for content that doesn't contain ", or "}
+                    sanitized_actions = re.sub(
+                        r'("content"\s*:\s*")((?:[^"\\]|\\.|"(?!\s*[,}]))*)(")',
+                        escape_content_quotes,
+                        actions,
+                        flags=re.DOTALL
+                    )
+                    
+                    # Try loading sanitized string
+                    try:
+                        raw_actions = json.loads(sanitized_actions)
+                    except json.JSONDecodeError:
+                         # Fallback to json_repair if still invalid
+                        raw_actions = json_repair.repair_json(sanitized_actions, return_objects=True)
+
                 except Exception as e:
-                    return {"error": f"actions 参数解析失败: 无效的 JSON 字符串，尝试修复也失败. Error: {e}"}
-            
-            # Validate structure
-            if not isinstance(actions_list, list):
-                 return {"error": "actions 参数解析后必须是列表 (List)"}
+                    print(f"[WARN] Sanitization failed: {e}. Falling back to original repair.")
+                    try:
+                        raw_actions = json_repair.repair_json(actions, return_objects=True)
+                    except Exception as e2:
+                        return {"error": f"actions 参数解析失败: 无效的 JSON 字符串，尝试修复也失败. Error: {e2}"}
         else:
              return {"error": f"actions 参数类型错误: 必须是 JSON 字符串或列表，但在收到的是 {type(actions)}"}
+
+        if not isinstance(raw_actions, list):
+             return {"error": "actions 参数解析后必须是列表 (List)"}
+
+        # 2. 扁平化处理 (Flatten nested lists)
+        actions_list = []
+        # Check if it's a nested list (e.g. [[{...}]])
+        if len(raw_actions) > 0 and isinstance(raw_actions[0], list):
+            print(f"[DEBUG] Detected nested list in actions, flattening...")
+            for item in raw_actions:
+                if isinstance(item, list):
+                    actions_list.extend(item)
+                else:
+                    actions_list.append(item)
+        else:
+            actions_list = raw_actions
+
+        # Validate actions content
+        valid_keys = {'action', 'file_path', 'content', 'previous_path', 'encoding', 'last_commit_id', 'execute_filemode'}
+        for i, action in enumerate(actions_list):
+            # Handle case where action might be a JSON string inside the list
+            if isinstance(action, str):
+                try:
+                    print(f"[DEBUG] Action #{i} is a string, attempting to parse as JSON...")
+                    action = json_repair.repair_json(action, return_objects=True)
+                    actions_list[i] = action # Update the list with parsed object
+                except Exception as e:
+                    return {"error": f"Action #{i} 是字符串但无法解析为 JSON: {e}"}
+
+            if not isinstance(action, dict):
+                return {"error": f"Action #{i} 必须是字典 (Dict)，实际类型: {type(action)}"}
+            if 'action' not in action or 'file_path' not in action:
+                return {"error": f"Action #{i} 缺少必需字段 (action, file_path): {action}"}
+            
+            # Check for unexpected keys which imply parsing errors (e.g. unescaped quotes split the content)
+            unknown_keys = set(action.keys()) - valid_keys
+            if unknown_keys:
+                return {
+                    "error": f"Action #{i} 包含未知字段 {unknown_keys}。这通常意味着 JSON 字符串中的引号未正确转义，导致解析器将内容错误分割。",
+                    "parsed_preview": str(action)[:200]
+                }
 
         commit_data = {
             'branch': branch_name,

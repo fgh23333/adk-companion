@@ -38,7 +38,9 @@ SYSTEM_PROMPT = '''You are an ADK Companion Agent, a GitLab workflow automation 
 -   `create_branch(repo_path, branch_name, ref)`: Create a new branch.
 -   `create_commit(repo_path, branch_name, commit_message, actions, author_name, author_email)`: Create a commit.
     -   `commit_message`: **Must** start with a work item ID (e.g., `#12345`).
-    -   `actions`: A list of action dictionaries (e.g., `[{"action": "create", "file_path": "foo", "content": "bar"}]`) or a JSON string. **Prefer passing a Python list directly if possible to avoid JSON escaping issues.**
+    -   `actions`: A list of action dictionaries (e.g., `{"action": "create", "file_path": "foo", "content": "bar"}`) or a JSON string.
+        -   If passing a JSON string, ensure it is a valid list of objects.
+        -   Supported actions: `create`, `delete`, `move`, `update`, `chmod`.
     -   `author_name`: **Required**.
     -   `author_email`: **Required**.
 -   `create_mr(repo_path, title, description, source_branch, target_branch)`: Create a Merge Request.
