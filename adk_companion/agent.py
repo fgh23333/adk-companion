@@ -1,61 +1,67 @@
 from google.adk.agents.llm_agent import Agent
+from google.adk.tools import ToolContext
 
 from .config import model_config
 from .gitlab_agent import gitlab_agent
 from .gitlab_tools import (
-    get_mr_info,
-    get_mr_change_files,
-    get_file_content,
-    post_comment_on_mr,
+    get_projects,
+    search_projects,
+    get_project,
+    get_branches,
     create_branch,
-    create_commit,
-    create_mr,
-    review_mr,
-    merge_mr,
-    read_gitlab_repo,
-    compare_branches,
-    get_commit_info,
-    list_branches,
-    check_mr_author,
-    list_commits
+    get_commits,
+    get_file_content,
+    commit_changes,
+    get_merge_requests,
+    create_merge_request,
+    get_merge_request,
+    get_merge_request_author,
+    create_review_note,
+    get_merge_request_details,
 )
 
+def get_current_state(tool_context: ToolContext) -> dict:
+    """Returns the current state of the agent."""
+    return tool_context.state
+
 SYSTEM_PROMPT = '''You are an ADK Companion Agent, a GitLab workflow automation assistant.
-
 **Core Workflow: Human-in-the-Loop MR Merging**
-
-1.  **MR Creation:** You create Merge Requests (MRs) on behalf of the user.
-2.  **Author Check:** After creating an MR, you **MUST** use the `check_mr_author` tool to verify if you are the author.
-3.  **Mandatory Delegation:** If you are the author, you **MUST** delegate the review to the `gitlab_mr_reviewer` sub-agent. This is a strict, non-negotiable rule.
-4.  **Review Sub-Agent:** The `gitlab_mr_reviewer` will review the MR. It can approve it or request changes, but it **CANNOT** merge.
-5.  **Human Confirmation:** After the sub-agent approves the MR, you **MUST** ask the human user for explicit confirmation before merging. For example: "The review agent has approved MR !123. May I proceed with merging?"
-6.  **Merge Action:** Only after receiving a positive confirmation from the user can you use the `merge_mr` tool.
+1.  **MR Creation:** Use `create_merge_request`.
+2.  **Author Check:** After creating an MR, you **MUST** use `get_merge_request_author` to verify if you are the author.
+3.  **Mandatory Delegation:** If you are the author, you **MUST** delegate the review to the `gitlab_mr_reviewer` sub-agent.
+4.  **Review Sub-Agent:** The `gitlab_mr_reviewer` will review the MR.
+5.  **Human Confirmation:** After the sub-agent approves, you **MUST** ask the human user for explicit confirmation before merging.
+6.  **Merge Action:** This agent does not have a tool to merge. Inform the user to merge it manually after approval.
 
 **Sub-Agents:**
--   `gitlab_agent`: A specialized agent for handling GitLab tasks, including reviewing and approving Merge Requests. It uses a separate token and cannot merge.
+-   `gitlab_agent`: A specialized agent for handling GitLab tasks.
 
-**GitLab MR Management Tools:**
--   `create_branch(repo_path, branch_name, ref)`: Create a new branch.
--   `create_commit(repo_path, branch_name, commit_message, actions, author_name, author_email)`: Create a commit.
-    -   `commit_message`: **Must** start with a work item ID (e.g., `#12345`).
-    -   `actions`: A list of action dictionaries (e.g., `{"action": "create", "file_path": "foo", "content": "bar"}`) or a JSON string.
-        -   If passing a JSON string, ensure it is a valid list of objects.
-        -   Supported actions: `create`, `delete`, `move`, `update`, `chmod`.
-    -   `author_name`: **Required**.
-    -   `author_email`: **Required**.
--   `create_mr(repo_path, title, description, source_branch, target_branch)`: Create a Merge Request.
--   `check_mr_author(repo_path, mr_id)`: **Crucial tool.** Checks the author of an MR to enforce the self-review delegation rule.
--   `get_mr_info(repo_path, mr_id)`: Get MR details.
--   `get_mr_change_files(repo_path, mr_id)`: Get files changed in an MR.
--   `get_file_content(repo_path, file_path, ref)`: Get file content.
--   `get_commit_info(repo_path, commit_sha)`: Get commit details.
--   `list_commits(repo_path, ref_name, max_commits)`: List commits for a repository.
--   `list_branches(repo_path, search)`: List repository branches.
--   `post_comment_on_mr(repo_path, mr_id, comment)`: Post a comment on an MR.
--   `review_mr(repo_path, mr_id, review_comment)`: Submit a review for an MR (comment only, no formal approval).
--   `merge_mr(repo_path, mr_id)`: **Merge an MR. Can only be used after explicit user confirmation.**
--   `read_gitlab_repo(repo_path, file_path, ref, max_files)`: Read repository structure or file content.
--   `compare_branches(repo_path, source, target)`: Compare two branches.
+**Available Tools:**
+
+**Project Management:**
+- `get_projects(membership=True, search=None)`: Lists projects accessible by the user.
+- `search_projects(name)`: Searches for projects by name.
+- `get_project(project_id)`: Gets the details of a specific project.
+
+**Branch and Commit Management:**
+- `get_branches(project_id, search=None)`: Lists branches in a repository.
+- `create_branch(project_id, branch_name, base_ref)`: Creates a new branch.
+- `get_commits(project_id, ref_name=None, limit=20)`: Lists commits for a repository or a specific ref.
+- `commit_changes(project_id, branch, commit_message, actions, work_item_id, author_name, author_email)`: Creates a new commit.
+
+**File and Repository Management:**
+- `get_file_content(project_id, file_path, ref)`: Gets the content of a specific file.
+
+**Merge Request (MR) Management:**
+- `get_merge_requests(project_id, state="opened", search=None)`: Lists Merge Requests for a project.
+- `create_merge_request(project_id, source_branch, target_branch, title, description=None)`: Creates a new Merge Request.
+- `get_merge_request(project_id, iid)`: Gets the details of a specific Merge Request.
+- `get_merge_request_details(project_id, iid)`: Gets the details of a specific MR, including file changes.
+- `get_merge_request_author(project_id, iid)`: Gets the author of a Merge Request.
+- `create_review_note(project_id, iid, body)`: Posts a review note (comment) on a Merge Request.
+
+**Session and State Management:**
+- `get_current_state()`: Returns the current state of the agent.
 
 Please follow the workflow strictly to assist users with their GitLab tasks.'''
 
@@ -65,21 +71,21 @@ root_agent = Agent(
     description='ADK Companion Agent - A GitLab workflow automation assistant with a human-in-the-loop review process.',
     instruction=SYSTEM_PROMPT,
     tools=[
-        get_mr_info,
-        get_mr_change_files,
-        get_file_content,
-        post_comment_on_mr,
+        get_projects,
+        search_projects,
+        get_project,
+        get_branches,
         create_branch,
-        create_commit,
-        create_mr,
-        review_mr,
-        merge_mr,
-        read_gitlab_repo,
-        compare_branches,
-        get_commit_info,
-        list_branches,
-        check_mr_author,
-        list_commits
+        get_commits,
+        get_file_content,
+        commit_changes,
+        get_merge_requests,
+        create_merge_request,
+        get_merge_request,
+        get_merge_request_author,
+        create_review_note,
+        get_merge_request_details,
+        get_current_state,
     ],
     sub_agents=[gitlab_agent]
 )

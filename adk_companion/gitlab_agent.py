@@ -2,53 +2,43 @@ from google.adk.agents.llm_agent import Agent
 
 from .config import model_config
 from .gitlab_tools import (
-    get_mr_info,
-    get_mr_change_files,
+    get_merge_request,
+    get_merge_request_details,
     get_file_content,
-    post_comment_on_mr,
-    review_mr,
-    compare_branches,
-    get_commit_info,
-    list_branches,
-    list_commits
+    create_review_note,
+    get_commits,
+    get_branches,
 )
 
-SYSTEM_PROMPT = '''You are a specialized GitLab Agent.
-
-Your purpose is to handle GitLab-related tasks, including reviewing and commenting on Merge Requests.
+SYSTEM_PROMPT = '''You are a specialized GitLab Agent for reviewing Merge Requests.
 
 **Core Rules:**
 - You **CANNOT** merge MRs.
-- You must use the `REVIEW_GITLAB_PRIVATE_TOKEN` for all your actions when reviewing.
-- If the MR is satisfactory, you must use the `review_mr` tool and provide a clear review comment (e.g., "Approved: Looks good", "LGTM") explaining why it is approved. Note that this tool only posts a comment and does not perform a formal approval action.
-- If the MR needs changes, you must use the `post_comment_on_mr` tool to leave feedback.
+- Your purpose is to review code, files, and MR details, and then post comments.
+- If the MR is satisfactory, post an approval comment (e.g., "Approved: Looks good", "LGTM").
+- If the MR needs changes, post feedback with specific details.
+- Use the `create_review_note` tool to post any comments.
 
 **Available Tools:**
-- `get_mr_info(repo_path, mr_id)`
-- `get_mr_change_files(repo_path, mr_id)`
-- `get_file_content(repo_path, file_path, ref)`
-- `post_comment_on_mr(repo_path, mr_id, comment)`
-- `review_mr(repo_path, mr_id, review_comment)`
-- `compare_branches(repo_path, source, target)`
-- `get_commit_info(repo_path, commit_sha)`
-- `list_commits(repo_path, ref_name, max_commits)`
-- `list_branches(repo_path, search)`
+- `get_merge_request(project_id, iid)`: Gets the details of the current Merge Request.
+- `get_merge_request_details(project_id, iid)`: Gets the details of the MR, including file changes.
+- `get_file_content(project_id, file_path, ref)`: Gets the content of a specific file in the repository.
+- `get_commits(project_id, ref_name=None, limit=20)`: Lists commits for the MR's branch.
+- `get_branches(project_id, search=None)`: Lists branches in the repository.
+- `create_review_note(project_id, iid, body)`: Posts a review note (comment) on the Merge Request. This is your primary tool for providing feedback.
 '''
 
 gitlab_agent = Agent(
     model=model_config,
     name='gitlab_agent',
-    description='GitLab Agent - A specialized agent for handling GitLab tasks.',
+    description='GitLab Agent - A specialized agent for reviewing and commenting on Merge Requests.',
     instruction=SYSTEM_PROMPT,
     tools=[
-        get_mr_info,
-        get_mr_change_files,
+        get_merge_request,
+        get_merge_request_details,
         get_file_content,
-        post_comment_on_mr,
-        review_mr,
-        compare_branches,
-        get_commit_info,
-        list_branches,
-        list_commits
+        create_review_note,
+        get_commits,
+        get_branches,
     ]
 )

@@ -5,6 +5,7 @@ load_dotenv()
 
 LLM_MODEL = os.getenv('LLM_MODEL', 'gemini-2.5-pro')
 BASE_URL = os.getenv('BASE_URL', 'http://ailab.flashhold.com:13001/v1')
+GITLAB_BASE_URL = os.getenv('GITLAB_BASE_URL', 'http://ailab.flashhold.com:9901')
 API_KEY = os.getenv('API_KEY')
 
 model_config = LiteLlm(model=LLM_MODEL, api_base=BASE_URL, api_key=API_KEY)
