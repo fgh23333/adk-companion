@@ -99,9 +99,14 @@ def get_merge_request_author(project_id: int, iid: int) -> Dict[str, Any]:
     """Gets the author of a Merge Request."""
     return _request("get", f"/gitlab/api/v1/git/merge_requests/{iid}/author", params={"project_id": project_id})
 
-def create_review_note(project_id: int, iid: int, body: str) -> Dict[str, Any]:
+def create_review_note(project_id: int, iid: int, review_note: str) -> Dict[str, Any]:
     """Posts a review note (comment) on a Merge Request."""
-    return _request("post", f"/gitlab/api/v1/git/merge_requests/{iid}/notes", json={"body": body})
+    body = {
+        "project_id": project_id,
+        "iid": iid,
+        "body": review_note
+    }
+    return _request("post", f"/gitlab/api/v1/git/merge_requests/{iid}/notes", json=body)
 
 def get_merge_request_details(project_id: int, iid: int) -> Dict[str, Any]:
     """Gets the details of a specific Merge Request, including file changes."""
