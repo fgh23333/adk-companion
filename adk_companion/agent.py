@@ -58,7 +58,7 @@ SYSTEM_PROMPT = '''You are an ADK Companion Agent, a GitLab workflow automation 
 - `get_merge_request(project_id, iid)`: Gets the details of a specific Merge Request.
 - `get_merge_request_details(project_id, iid)`: Gets the details of a specific MR, including file changes.
 - `get_merge_request_author(project_id, iid)`: Gets the author of a Merge Request.
-- `create_review_note(project_id, iid, body)`: Posts a review note (comment) on a Merge Request.
+- `create_review_note(project_id, iid, review_note)`: Posts a review note (comment) on a Merge Request.
 
 **Session and State Management:**
 - `get_current_state()`: Returns the current state of the agent.

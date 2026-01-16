@@ -25,7 +25,7 @@ SYSTEM_PROMPT = '''You are a specialized GitLab Agent for reviewing Merge Reques
 - `get_file_content(project_id, file_path, ref)`: Gets the content of a specific file in the repository.
 - `get_commits(project_id, ref_name=None, limit=20)`: Lists commits for the MR's branch.
 - `get_branches(project_id, search=None)`: Lists branches in the repository.
-- `create_review_note(project_id, iid, body)`: Posts a review note (comment) on the Merge Request. This is your primary tool for providing feedback.
+- `create_review_note(project_id, iid, review_note)`: Posts a review note (comment) on the Merge Request. This is your primary tool for providing feedback.
 '''
 
 gitlab_agent = Agent(
