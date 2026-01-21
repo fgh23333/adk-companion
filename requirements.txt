@@ -1,5 +1,6 @@
 # ADK 核心依赖
 google-adk>=1.21.0
+google-adk[a2a]
 
 # Web 框架
 fastapi>=0.115.0,<0.124.0

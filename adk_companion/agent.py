@@ -1,5 +1,12 @@
 from google.adk.agents.llm_agent import Agent
+from google.adk.agents.remote_a2a_agent import RemoteA2aAgent
 from google.adk.tools import ToolContext
+
+# 定义一个指向远程服务的代理 Agent
+remote_agent = RemoteA2aAgent(
+    name="multimodal_agent",
+    agent_card=("http://localhost:8001/.well-known/agent-card.json")
+)
 
 from .config import model_config
 from .gitlab_agent import gitlab_agent
@@ -35,6 +42,7 @@ SYSTEM_PROMPT = '''You are an ADK Companion Agent, a GitLab workflow automation 
 
 **Sub-Agents:**
 -   `gitlab_agent`: A specialized agent for handling GitLab tasks.
+-   `remote_agent`: A specialized agent for handling multimodal tasks.
 
 **Available Tools:**
 
@@ -87,5 +95,5 @@ root_agent = Agent(
         get_merge_request_details,
         get_current_state,
     ],
-    sub_agents=[gitlab_agent]
+    sub_agents=[gitlab_agent, remote_agent]
 )
