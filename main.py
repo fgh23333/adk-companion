@@ -8,7 +8,9 @@ from google.adk.cli.fast_api import get_fast_api_app
 AGENT_DIR = os.path.dirname(os.path.abspath(__file__))
 # Example session service URI (e.g., SQLite)
 # Note: Use 'sqlite+aiosqlite' instead of 'sqlite' because DatabaseSessionService requires an async driver
-SESSION_SERVICE_URI = "sqlite+aiosqlite:///./sessions.db"
+# 本地开发用 SQLite，部署时通过环境变量 SESSION_SERVICE_URI 指向 Cloud SQL PostgreSQL
+# 格式: "postgresql+asyncpg://user:password@host/dbname"
+SESSION_SERVICE_URI = os.environ.get("SESSION_SERVICE_URI", "sqlite+aiosqlite:///./sessions.db")
 # Example allowed origins for CORS
 ALLOWED_ORIGINS = ["*"]
 # Set web=True if you intend to serve a web interface, False otherwise

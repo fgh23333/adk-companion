@@ -1,6 +1,9 @@
 # ADK 核心依赖
 google-adk>=1.21.0
 
+# 异步 PostgreSQL 驱动（Cloud SQL）
+asyncpg>=0.29.0
+
 # Web 框架
 fastapi>=0.115.0,<0.124.0
 uvicorn>=0.22.0
