@@ -3,7 +3,7 @@ from google.adk.tools import agent_tool
 
 from .review_agent import review_agent
 from .reader_agent import reader_agent
-from .minio_agent import minio_agent
+# from .minio_agent import minio_agent
 from .docs_agent import docs_agent
 from .github_tools import github_full_access_toolset
 
@@ -29,7 +29,6 @@ SYSTEM_PROMPT = """你是 ADK 伴随智能体 (ADK Companion Agent)，一个深�
 **🛠️ 你的工具与伙伴：**
 -   **`github_full_access_toolset`**：你的主 GitHub 工具，支持创建 PR、管理 Issue 和操作文件。
 -   **`adk_docs_tools` (工具)**：由 ADK 文档专家驱动，用于实时检索官方技术文档。
--   **`minio_tools` (工具)**：用于与 MinIO 专家交互，管理对象存储数据。
 -   **`code_reader` (子智能体)**：代码阅读专家。当你需要深度获取仓库 tree、分析复杂的依赖关系或进行代码安全审计时，请将其作为你的首选资源。
 -   **`pr_reviewer` (子智能体)**：代码审查专家。负责审查并合并由你发起的 PR。
 
@@ -43,7 +42,7 @@ SYSTEM_PROMPT = """你是 ADK 伴随智能体 (ADK Companion Agent)，一个深�
 -   **文档驱动**：保持提交信息和 Issue 描述的高质量。
 """
 
-minio_tools = agent_tool.AgentTool(minio_agent)
+# minio_tools = agent_tool.AgentTool(minio_agent)
 adk_docs_tools = agent_tool.AgentTool(docs_agent)
 
 root_agent = Agent(
@@ -53,7 +52,7 @@ root_agent = Agent(
     instruction=SYSTEM_PROMPT,
     tools=[
         github_full_access_toolset,
-        minio_tools,
+        # minio_tools,
         adk_docs_tools
     ],
     sub_agents=[review_agent, reader_agent]
